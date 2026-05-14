@@ -68,11 +68,33 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
+| AUTH-01 | Phase 1 | Pending |
+| AUTH-02 | Phase 1 | Pending |
+| AUTH-03 | Phase 1 | Pending |
+| AUTH-04 | Phase 1 | Pending |
+| SIDE-01 | Phase 1 | Pending |
+| PROF-01 | Phase 2 | Pending |
+| PROF-02 | Phase 2 | Pending |
+| PROF-03 | Phase 2 | Pending |
+| PROF-04 | Phase 2 | Pending |
+| PROF-05 | Phase 2 | Pending |
+| SNIP-01 | Phase 2 | Pending |
+| SNIP-02 | Phase 2 | Pending |
+| SNIP-03 | Phase 2 | Pending |
+| SNIP-04 | Phase 2 | Pending |
+| SNIP-05 | Phase 2 | Pending |
+| SIDE-02 | Phase 2 | Pending |
+| SIDE-03 | Phase 2 | Pending |
+| SIDE-04 | Phase 2 | Pending |
+| ACTN-01 | Phase 3 | Pending |
+| ACTN-02 | Phase 3 | Pending |
+| ACTN-03 | Phase 4 | Pending |
+| ACTN-04 | Phase 4 | Pending |
 
 **Coverage:**
-- v1 requirements: 18 total
-- Mapped to phases: 0
-- Unmapped: 18 ⚠️
+- v1 requirements: 22 total
+- Mapped to phases: 22
+- Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-05-15*
