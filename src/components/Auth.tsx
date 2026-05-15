@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { LogIn, UserPlus, AlertCircle, Loader2 } from 'lucide-react';
+import { LogIn, UserPlus, AlertCircle, Loader2, Briefcase } from 'lucide-react';
 
 export const Auth = () => {
   const [email, setEmail] = useState('');
