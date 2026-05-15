@@ -53,7 +53,9 @@ document.addEventListener('keydown', (event) => {
 function handleExpansion(element: HTMLInputElement | HTMLTextAreaElement, event: KeyboardEvent) {
   const cursor = element.selectionStart || 0;
   const text = element.value.slice(0, cursor);
-  const match = text.match(/\/(\S+)$/);
+  
+  // Match the last word before the cursor (any non-whitespace sequence)
+  const match = text.match(/(\S+)$/);
   
   if (!match) return;
 
@@ -65,16 +67,27 @@ function handleExpansion(element: HTMLInputElement | HTMLTextAreaElement, event:
     event.preventDefault();
 
     // 2. Identify the replacement range
-    const start = cursor - (shortcut.length + 1); // +1 for the slash
+    const start = cursor - shortcut.length;
     const end = cursor;
 
     // 3. Perform the replacement
-    // Using 'end' ensures cursor stays after the new text
-    element.setRangeText(expandedText + (event.key === 'Enter' ? '' : ' '), start, end, 'end');
-
+    element.focus();
+    element.setSelectionRange(start, end);
+    
+    const replacement = expandedText + (event.key === 'Enter' ? '' : ' ');
+    
+    // Try execCommand first (better for React/Vue undo stacks)
+    const success = document.execCommand('insertText', false, replacement);
+    
+    if (!success) {
+      // Fallback for browsers/elements that don't support execCommand
+      element.setRangeText(replacement, start, end, 'end');
+    }
+    
     // 4. Dispatch events for React/Vue compatibility
-    element.dispatchEvent(new Event('input', { bubbles: true }));
-    element.dispatchEvent(new Event('change', { bubbles: true }));
+    ['input', 'change', 'blur'].forEach(type => {
+      element.dispatchEvent(new Event(type, { bubbles: true }));
+    });
 
     console.log('ClipStaff: Expanded', shortcut);
   }
