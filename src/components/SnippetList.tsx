@@ -110,15 +110,6 @@ export const SnippetList = () => {
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
-                  </div>
-                </div>
-                <p className="text-sm text-slate-600 line-clamp-2 leading-relaxed">
-                  {snippet.text}
-                </p>
-                <div className="flex items-center gap-xs text-[10px] text-slate-400 font-medium">
-                  <span className="px-1.5 py-0.5 border border-slate-200 rounded uppercase">
-                    {snippet.category}
-                  </span>
                 </div>
               </div>
             ))}
