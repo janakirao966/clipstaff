@@ -3,8 +3,8 @@ import { useStore } from '../store/useStore';
 import { useProfiles } from '../hooks/useProfiles';
 import { copyToClipboard } from '../lib/clipboard';
 import { 
-  User, Plus, Edit2, Trash2, CheckCircle2, Circle, Loader2, 
-  Mail, Phone, Linkedin, Globe, MapPin, CreditCard, Clock, Copy, Check 
+  User, Plus, Edit2, Trash2, CheckCircle2, Loader2, 
+  Mail, Phone, Linkedin, Globe, MapPin 
 } from 'lucide-react';
 import { ProfileDetail } from './ProfileDetail';
 
@@ -14,7 +14,6 @@ export const ProfileList = () => {
   const [loading, setLoading] = useState(true);
   const [editingProfile, setEditingProfile] = useState<any>(null);
   const [isAdding, setIsAdding] = useState(false);
-  const [copiedField, setCopiedField] = useState<string | null>(null);
 
   const activeProfile = profiles.find(p => p.is_active);
 

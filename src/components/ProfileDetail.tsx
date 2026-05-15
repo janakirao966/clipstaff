@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useProfiles } from '../hooks/useProfiles';
-import { X, Save, Loader2 } from 'lucide-react';
+import { X, Loader2 } from 'lucide-react';
 
 interface ProfileDetailProps {
   profile?: any;
