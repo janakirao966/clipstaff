@@ -7,10 +7,10 @@
 
 | # | Phase | Goal | Requirements | Status |
 |---|-------|------|--------------|--------|
-| 1 | Foundation | Basic extension setup, sidebar UI, and user authentication | AUTH-01, AUTH-02, AUTH-03, AUTH-04, SIDE-01 | Pending |
-| 2 | Data Management | Profile and Snippet CRUD operations within the sidebar | PROF-01, PROF-02, PROF-03, PROF-04, PROF-05, SNIP-01, SNIP-02, SNIP-03, SNIP-04, SNIP-05, SIDE-02, SIDE-03, SIDE-04 | Pending |
+| 1 | Foundation | 2/2 | Complete   | 2026-05-14 |
+| 2 | Data Management | 2/3 | In Progress|  |
 | 3 | Core Extension Features | Click-to-copy, clipboard writing, toast notifications, and basic content script structure | ACTN-01, ACTN-02 | Pending |
-| 4 | Shortcut Engine | Content script text replacement engine mapping user shortcuts to active inputs | ACTN-03, ACTN-04 | Pending |
+| 4 | Shortcut Engine | 0/3 | Planned    |  |
 
 ## Phase Details
 
