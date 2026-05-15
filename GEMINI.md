@@ -65,7 +65,9 @@ ClipStaff is a lightweight browser extension designed for recruiters, staffing p
 <!-- GSD:conventions-start source:CONVENTIONS.md -->
 ## Conventions
 
-Conventions not yet established. Will populate as patterns emerge during development.
+## Conventions
+
+Refer to [CONVENTIONS.md](./CONVENTIONS.md) for detailed UI, state, and development patterns.
 <!-- GSD:conventions-end -->
 
 <!-- GSD:architecture-start source:ARCHITECTURE.md -->
