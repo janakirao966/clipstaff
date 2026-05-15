@@ -15,7 +15,8 @@ function MainContent() {
   }
 
   return (
-    <div className="flex flex-col h-screen bg-white font-sans overflow-hidden">
+    <div className="flex flex-col min-h-screen bg-slate-50 font-sans overflow-hidden">
+      <div className="flex-1 flex flex-col w-full max-w-md mx-auto bg-white shadow-2xl relative">
       {/* Header */}
       <header className="flex items-center justify-between px-md py-3 bg-accent text-white shadow-sm flex-shrink-0">
         <div className="flex items-center gap-2">
@@ -92,6 +93,7 @@ function MainContent() {
         <span className="font-mono">v0.1.0</span>
       </footer>
     </div>
+  </div>
   );
 }
 

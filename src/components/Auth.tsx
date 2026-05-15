@@ -31,12 +31,15 @@ export const Auth = () => {
   };
 
   return (
-    <div className="flex flex-col items-center justify-center p-md space-y-lg">
-      <div className="text-center space-y-xs">
-        <h2 className="text-display font-bold text-accent">
+    <div className="flex flex-col items-center justify-center p-xl space-y-xl min-h-[500px]">
+      <div className="text-center space-y-sm">
+        <div className="mx-auto w-16 h-16 bg-accent rounded-2xl flex items-center justify-center shadow-lg mb-md">
+           <Briefcase className="w-8 h-8 text-white" />
+        </div>
+        <h2 className="text-2xl font-bold text-accent tracking-tight">
           {mode === 'login' ? 'Welcome Back' : 'Get Started'}
         </h2>
-        <p className="text-sm text-slate-500">
+        <p className="text-sm text-slate-500 max-w-[240px] mx-auto leading-relaxed">
           {mode === 'login' 
             ? 'Sign in to access your professional profiles' 
             : 'Create an account to speed up your job applications'}
@@ -55,27 +58,27 @@ export const Auth = () => {
           </div>
         )}
 
-        <div className="space-y-sm">
-          <div className="space-y-xs">
-            <label className="text-label text-slate-600 font-medium">Email</label>
+        <div className="space-y-lg">
+          <div className="space-y-1.5">
+            <label className="text-xs font-bold uppercase tracking-wider text-slate-500 block">Email Address</label>
             <input
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              className="w-full px-sm py-2 rounded-md border border-slate-200 focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent transition-all"
+              className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-accent/5 focus:border-accent transition-all bg-slate-50/50"
               placeholder="name@company.com"
             />
           </div>
-
-          <div className="space-y-xs">
-            <label className="text-label text-slate-600 font-medium">Password</label>
+ 
+          <div className="space-y-1.5">
+            <label className="text-xs font-bold uppercase tracking-wider text-slate-500 block">Password</label>
             <input
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
-              className="w-full px-sm py-2 rounded-md border border-slate-200 focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent transition-all"
+              className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-accent/5 focus:border-accent transition-all bg-slate-50/50"
               placeholder="••••••••"
             />
           </div>

@@ -65,25 +65,28 @@ export const SnippetList = () => {
       </div>
 
       <div className="flex-1 overflow-y-auto">
-        {filteredSnippets.length === 0 ? (
+        {snippets.length === 0 ? (
           <div className="flex flex-col items-center justify-center p-xl text-center space-y-sm">
             <Hash className="w-10 h-10 text-slate-200" />
-            <p className="text-sm text-slate-500">
-              {searchTerm ? 'No matches found.' : 'No snippets created yet.'}
-            </p>
+            <p className="text-sm text-slate-500">No snippets created yet.</p>
+            <p className="text-xs text-slate-400">Add common phrases to expand them instantly.</p>
           </div>
         ) : (
           <div className="divide-y divide-slate-50">
             {filteredSnippets.map((snippet) => (
               <div
                 key={snippet.id}
-                className="flex flex-col p-md hover:bg-slate-50 transition-colors group space-y-xs"
+                className="flex items-center justify-between p-md hover:bg-slate-50 transition-colors group"
               >
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-accent px-2 py-0.5 bg-slate-100 rounded-full uppercase tracking-wider">
-                    /{snippet.shortcut}
+                <div className="flex flex-col min-w-0 pr-md">
+                  <span className="text-sm font-bold text-accent font-mono tracking-tight">
+                    {snippet.shortcut}
                   </span>
-                  <div className="flex items-center gap-xs opacity-0 group-hover:opacity-100 transition-opacity">
+                  <span className="text-[11px] text-slate-400 truncate leading-relaxed">
+                    {snippet.text}
+                  </span>
+                </div>
+                <div className="flex items-center gap-xs opacity-0 group-hover:opacity-100 transition-opacity">
                     <button
                       onClick={() => handleCopy(snippet.text, snippet.id, snippet.shortcut)}
                       className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-white rounded-md"

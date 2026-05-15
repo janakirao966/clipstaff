@@ -50,31 +50,30 @@ export const SnippetDetail: React.FC<SnippetDetailProps> = ({ snippet, onClose }
       </header>
 
       <form onSubmit={handleSubmit} className="flex-1 flex flex-col overflow-hidden">
-        <div className="flex-1 overflow-y-auto p-md space-y-md">
-          <div className="space-y-xs">
-            <label className="text-label text-slate-500 font-medium uppercase tracking-wider">Shortcut</label>
+        <div className="flex-1 overflow-y-auto p-md space-y-lg">
+          <div className="space-y-1.5">
+            <label className="text-xs font-bold uppercase tracking-wider text-slate-500 block">Shortcut</label>
             <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold">/</span>
               <input
                 required
-                className="w-full pl-7 pr-4 py-2 border border-slate-200 rounded-md focus:ring-2 focus:ring-accent outline-none font-mono text-sm"
+                className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-accent/5 focus:border-accent transition-all bg-slate-50/50"
                 value={formData.shortcut}
                 onChange={(e) => setFormData({ ...formData, shortcut: e.target.value.replace(/\s+/g, '-').toLowerCase() })}
-                placeholder="my-name"
+                placeholder="e.g. name"
               />
             </div>
-            <p className="text-[10px] text-slate-400">Unique identifier for expansion (e.g. /name)</p>
+            <p className="text-[10px] text-slate-400">Type this word + Space on any site to expand it.</p>
           </div>
 
-          <div className="space-y-xs">
-            <label className="text-label text-slate-500 font-medium uppercase tracking-wider">Expanded Text</label>
+          <div className="space-y-1.5">
+            <label className="text-xs font-bold uppercase tracking-wider text-slate-500 block">Expanded Text</label>
             <textarea
               required
               rows={6}
-              className="w-full px-sm py-2 border border-slate-200 rounded-md focus:ring-2 focus:ring-accent outline-none text-sm resize-none"
+              className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-accent/5 focus:border-accent transition-all bg-slate-50/50 resize-none text-sm leading-relaxed"
               value={formData.text}
               onChange={(e) => setFormData({ ...formData, text: e.target.value })}
-              placeholder="The text to insert when shortcut is typed..."
+              placeholder="Enter the full text to insert..."
             />
           </div>
 
