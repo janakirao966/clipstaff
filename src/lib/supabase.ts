@@ -7,28 +7,39 @@ if (!supabaseUrl || !supabaseAnonKey) {
   console.warn('Supabase credentials missing. Please check your .env file.');
 }
 
-// Custom storage adapter for Chrome Extension using chrome.storage.local
+// Custom storage adapter: chrome.storage.local for extension, localStorage for web
 const chromeStorageAdapter = {
   getItem: (key: string) => {
-    return new Promise<string | null>((resolve) => {
-      chrome.storage.local.get([key], (result) => {
-        resolve(result[key] || null);
+    if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+      return new Promise<string | null>((resolve) => {
+        chrome.storage.local.get([key], (result) => {
+          resolve(result[key] || null);
+        });
       });
-    });
+    }
+    return Promise.resolve(localStorage.getItem(key));
   },
   setItem: (key: string, value: string) => {
-    return new Promise<void>((resolve) => {
-      chrome.storage.local.set({ [key]: value }, () => {
-        resolve();
+    if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+      return new Promise<void>((resolve) => {
+        chrome.storage.local.set({ [key]: value }, () => {
+          resolve();
+        });
       });
-    });
+    }
+    localStorage.setItem(key, value);
+    return Promise.resolve();
   },
   removeItem: (key: string) => {
-    return new Promise<void>((resolve) => {
-      chrome.storage.local.remove([key], () => {
-        resolve();
+    if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
+      return new Promise<void>((resolve) => {
+        chrome.storage.local.remove([key], () => {
+          resolve();
+        });
       });
-    });
+    }
+    localStorage.removeItem(key);
+    return Promise.resolve();
   },
 };
 
