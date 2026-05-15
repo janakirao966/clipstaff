@@ -2,18 +2,36 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --dominant: #FFFFFF;
-  --secondary: #F8FAFC;
-  --accent: #0F172A;
-  --destructive: #EF4444;
-}
-
 @layer base {
+  :root {
+    color-scheme: dark;
+  }
+
   html {
     font-family: 'Inter', sans-serif;
+    background-color: black;
   }
+  
   body {
-    @apply bg-white text-[#0F172A];
+    @apply bg-black text-white antialiased selection:bg-accent/30 selection:text-white;
+    margin: 0;
+    overflow: hidden;
+  }
+
+  /* Custom Scrollbar for Aether Dark */
+  ::-webkit-scrollbar {
+    width: 4px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-white/5 rounded-full hover:bg-white/10 transition-colors;
+  }
+}
+
+@layer components {
+  .glass-card {
+    @apply bg-[#0A0A0A] border border-white/5 shadow-premium backdrop-blur-xl;
   }
 }

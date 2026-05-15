@@ -2,13 +2,16 @@ import { useEffect, useState } from 'react';
 import { useStore } from '../store/useStore';
 import { useSnippets } from '../hooks/useSnippets';
 import { copyToClipboard } from '../lib/clipboard';
-import { Search, Plus, Edit2, Trash2, Hash, Copy, Check, Loader2 } from 'lucide-react';
+import { 
+  Hash, Plus, Edit2, Trash2, Search, Copy, Check, Loader2 
+} from 'lucide-react';
 import { SnippetDetail } from './SnippetDetail';
 
 export const SnippetList = () => {
-  const { snippets, searchTerm, setSearchTerm } = useStore();
+  const { snippets } = useStore();
   const { fetchSnippets, deleteSnippet } = useSnippets();
   const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
   const [editingSnippet, setEditingSnippet] = useState<any>(null);
   const [isAdding, setIsAdding] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -17,102 +20,107 @@ export const SnippetList = () => {
     fetchSnippets().finally(() => setLoading(false));
   }, []);
 
+  const handleCopy = async (text: string, id: string, shortcut: string) => {
+    await copyToClipboard(text, shortcut);
+    setCopiedId(id);
+    setTimeout(() => setCopiedId(null), 2000);
+  };
+
   const filteredSnippets = snippets.filter(s => 
     s.shortcut.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    s.text.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    s.category.toLowerCase().includes(searchTerm.toLowerCase())
+    s.text.toLowerCase().includes(searchTerm.toLowerCase())
   );
-
-  const handleCopy = async (text: string, id: string, shortcut: string) => {
-    const success = await copyToClipboard(text, shortcut);
-    if (success) {
-      setCopiedId(id);
-      setTimeout(() => setCopiedId(null), 2000);
-    }
-  };
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-48">
-        <Loader2 className="w-6 h-6 animate-spin text-slate-400" />
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="w-8 h-8 animate-spin text-accent" />
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Search Header */}
-      <div className="px-6 pt-8 pb-4 space-y-4">
-        <div className="flex items-center justify-between">
+    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+      {/* Search and Action Header */}
+      <div className="space-y-6">
+        <div className="flex items-center justify-between px-2">
           <h2 className="text-[10px] font-black uppercase tracking-[0.3em] text-muted">Snippet Vault</h2>
           <button
             onClick={() => setIsAdding(true)}
-            className="w-8 h-8 flex items-center justify-center bg-accent/10 text-accent-light rounded-lg hover:bg-accent hover:text-white transition-all duration-300"
+            className="w-10 h-10 flex items-center justify-center bg-white/5 hover:bg-accent text-muted hover:text-white rounded-xl border border-white/5 transition-all duration-300"
           >
-            <Plus className="w-4 h-4" />
+            <Plus className="w-5 h-5" />
           </button>
         </div>
         
-        <div className="relative group">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted group-focus-within:text-accent transition-colors" />
+        <div className="relative group px-1">
+          <Search className="absolute left-6 top-1/2 -translate-y-1/2 w-4 h-4 text-muted group-focus-within:text-accent transition-colors" />
           <input
             type="text"
-            placeholder="Search shortcuts..."
-            className="w-full pl-11 pr-4 py-3 bg-surface/40 border border-white/5 rounded-2xl text-sm text-white placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent/50 transition-all duration-300"
+            placeholder="Search shortcut or content..."
+            className="w-full pl-12 pr-4 py-4 bg-[#0A0A0A] border border-white/5 rounded-2xl text-sm text-white placeholder:text-muted focus:outline-none focus:border-accent/40 focus:ring-4 focus:ring-accent/5 transition-all duration-300"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
       </div>
 
-      <div className="px-4 space-y-2">
+      {/* Snippet Grid */}
+      <div className="space-y-3 px-1 pb-24">
         {snippets.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-12 text-center">
-            <div className="w-16 h-16 bg-surface rounded-2xl flex items-center justify-center mb-4 border border-white/5">
-              <Hash className="w-8 h-8 text-muted/30" />
-            </div>
-            <p className="text-sm font-medium text-muted">Your vault is empty</p>
+          <div className="py-20 border-2 border-dashed border-white/5 rounded-3xl flex flex-col items-center justify-center text-muted">
+            <Hash className="w-12 h-12 opacity-10 mb-4" />
+            <p className="text-xs font-bold uppercase tracking-widest">Vault Empty</p>
           </div>
         ) : (
           filteredSnippets.map((snippet) => (
             <div
               key={snippet.id}
-              className="group flex items-center justify-between p-4 bg-surface/40 border border-white/5 rounded-2xl hover:border-white/20 hover:bg-surface/60 transition-all duration-300"
+              className="group p-5 bg-[#0A0A0A]/50 border border-white/5 rounded-2xl hover:border-white/20 transition-all duration-300 relative overflow-hidden"
             >
-              <div className="flex flex-col min-w-0 pr-4">
-                <span className="text-sm font-mono font-bold text-accent-light tracking-tight mb-1">
-                  {snippet.shortcut}
-                </span>
-                <span className="text-[11px] text-muted truncate leading-relaxed">
-                  {snippet.text}
-                </span>
+              <div className="flex items-center justify-between relative z-10">
+                <div className="flex flex-col min-w-0 pr-6">
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <span className="text-sm font-mono font-black text-accent-light tracking-tight">
+                      {snippet.shortcut}
+                    </span>
+                    <div className="w-1 h-1 rounded-full bg-white/10" />
+                    <span className="text-[10px] font-mono text-muted uppercase tracking-tighter">Shortcut</span>
+                  </div>
+                  <p className="text-[11px] text-muted truncate font-medium opacity-70 leading-relaxed">
+                    {snippet.text}
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all transform translate-x-2 group-hover:translate-x-0">
+                  <button
+                    onClick={() => handleCopy(snippet.text, snippet.id, snippet.shortcut)}
+                    className="p-2.5 text-muted hover:text-emerald-400 hover:bg-emerald-400/5 rounded-xl transition-colors"
+                    title="Copy"
+                  >
+                    {copiedId === snippet.id ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                  </button>
+                  <button
+                    onClick={() => setEditingSnippet(snippet)}
+                    className="p-2.5 text-muted hover:text-white hover:bg-white/5 rounded-xl transition-colors"
+                  >
+                    <Edit2 className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (confirm(`Purge snippet "${snippet.shortcut}"?`)) {
+                        deleteSnippet(snippet.id);
+                      }
+                    }}
+                    className="p-2.5 text-muted hover:text-red-400 hover:bg-red-400/5 rounded-xl transition-colors"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
 
-              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all duration-300 transform translate-x-2 group-hover:translate-x-0">
-                <button
-                  onClick={() => handleCopy(snippet.text, snippet.id, snippet.shortcut)}
-                  className="p-2 text-muted hover:text-emerald-400 hover:bg-emerald-400/5 rounded-lg transition-colors"
-                  title="Copy"
-                >
-                  {copiedId === snippet.id ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                </button>
-                <button
-                  onClick={() => setEditingSnippet(snippet)}
-                  className="p-2 text-muted hover:text-white hover:bg-white/5 rounded-lg transition-colors"
-                >
-                  <Edit2 className="w-3.5 h-3.5" />
-                </button>
-                <button
-                  onClick={() => {
-                    if (confirm(`Purge snippet "${snippet.shortcut}"?`)) {
-                      deleteSnippet(snippet.id);
-                    }
-                  }}
-                  className="p-2 text-muted hover:text-red-400 hover:bg-red-400/5 rounded-lg transition-colors"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
-              </div>
+              {/* Status Border */}
+              <div className="absolute left-0 top-0 bottom-0 w-[2px] bg-accent opacity-0 group-hover:opacity-100 transition-opacity" />
             </div>
           ))
         )}
@@ -129,4 +137,4 @@ export const SnippetList = () => {
       )}
     </div>
   );
-}
+};

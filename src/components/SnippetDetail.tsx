@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useSnippets } from '../hooks/useSnippets';
-import { X, Save, Loader2 } from 'lucide-react';
+import { X, Save, Loader2, Hash, Type } from 'lucide-react';
 
 interface SnippetDetailProps {
   snippet?: any;
@@ -28,81 +28,99 @@ export const SnippetDetail: React.FC<SnippetDetailProps> = ({ snippet, onClose }
       onClose();
     } catch (err: any) {
       console.error(err);
-      if (err.message?.includes('unique')) {
-        alert('Shortcut already exists!');
-      } else {
-        alert('Failed to save snippet');
-      }
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-white animate-in slide-in-from-bottom-2 duration-200">
-      <header className="flex items-center justify-between p-md border-b border-slate-100">
-        <h3 className="text-lg font-bold text-accent">
-          {snippet ? 'Edit Snippet' : 'New Snippet'}
-        </h3>
-        <button onClick={onClose} className="p-1 hover:bg-slate-100 rounded-full transition-colors">
-          <X className="w-5 h-5 text-slate-500" />
-        </button>
-      </header>
+    <div className="fixed inset-0 z-[100] flex flex-col bg-black/80 backdrop-blur-md animate-in fade-in duration-300">
+      <div className="flex-1 flex flex-col w-full max-w-[450px] mx-auto bg-[#0A0A0A] border-x border-white/10 shadow-2xl overflow-hidden">
+        {/* Header */}
+        <header className="px-6 pt-10 pb-6 flex items-center justify-between border-b border-white/5">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-accent/20 rounded-xl flex items-center justify-center border border-accent/20">
+              <Hash className="w-5 h-5 text-accent" />
+            </div>
+            <div>
+              <h3 className="text-xl font-display font-black tracking-tight text-white">
+                {snippet ? 'Modify Sequence' : 'Establish Sequence'}
+              </h3>
+              <p className="text-[9px] font-mono text-muted uppercase tracking-widest">Macro Buffer Encryption: Active</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="w-10 h-10 flex items-center justify-center bg-white/5 hover:bg-white/10 rounded-xl transition-all">
+            <X className="w-5 h-5 text-muted" />
+          </button>
+        </header>
 
-      <form onSubmit={handleSubmit} className="flex-1 flex flex-col overflow-hidden">
-        <div className="flex-1 overflow-y-auto p-md space-y-lg">
-          <div className="space-y-1.5">
-            <label className="text-xs font-bold uppercase tracking-wider text-slate-500 block">Shortcut</label>
-            <div className="relative">
+        {/* Form */}
+        <form onSubmit={handleSubmit} className="flex-1 flex flex-col overflow-hidden">
+          <div className="flex-1 overflow-y-auto p-6 space-y-8 scrollbar-hide">
+            
+            {/* Shortcut Input */}
+            <div className="space-y-2">
+              <label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted ml-1">Trigger Shortcut</label>
+              <div className="relative group">
+                <Hash className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted group-focus-within:text-accent transition-colors" />
+                <input
+                  required
+                  placeholder="e.g. name"
+                  className="w-full pl-12 pr-4 py-4 bg-[#0A0A0A] border border-white/5 rounded-2xl text-sm font-mono text-accent-light placeholder:text-muted/30 focus:outline-none focus:border-accent/40 focus:ring-4 focus:ring-accent/5 transition-all"
+                  value={formData.shortcut}
+                  onChange={(e) => setFormData({ ...formData, shortcut: e.target.value.replace(/\s+/g, '-').toLowerCase() })}
+                />
+              </div>
+              <p className="text-[9px] font-medium text-muted/50 ml-1">Typing this trigger word + Space/Enter will execute expansion.</p>
+            </div>
+
+            {/* Content Input */}
+            <div className="space-y-2">
+              <label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted ml-1">Payload Content</label>
+              <div className="relative group">
+                <Type className="absolute left-4 top-6 w-4 h-4 text-muted group-focus-within:text-accent transition-colors" />
+                <textarea
+                  required
+                  rows={8}
+                  placeholder="Insert the content for this trigger..."
+                  className="w-full pl-12 pr-4 py-5 bg-[#0A0A0A] border border-white/5 rounded-2xl text-sm text-white placeholder:text-muted/30 focus:outline-none focus:border-accent/40 focus:ring-4 focus:ring-accent/5 transition-all resize-none leading-relaxed"
+                  value={formData.text}
+                  onChange={(e) => setFormData({ ...formData, text: e.target.value })}
+                />
+              </div>
+            </div>
+
+            {/* Category Input */}
+            <div className="space-y-2">
+              <label className="text-[10px] font-black uppercase tracking-[0.2em] text-muted ml-1">Vault Category</label>
               <input
-                required
-                className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-accent/5 focus:border-accent transition-all bg-slate-50/50"
-                value={formData.shortcut}
-                onChange={(e) => setFormData({ ...formData, shortcut: e.target.value.replace(/\s+/g, '-').toLowerCase() })}
-                placeholder="e.g. name"
+                placeholder="e.g. Professional"
+                className="w-full px-5 py-4 bg-[#0A0A0A] border border-white/5 rounded-2xl text-xs text-white placeholder:text-muted/30 focus:outline-none focus:border-accent/40 transition-all"
+                value={formData.category}
+                onChange={(e) => setFormData({ ...formData, category: e.target.value })}
               />
             </div>
-            <p className="text-[10px] text-slate-400">Type this word + Space on any site to expand it.</p>
           </div>
 
-          <div className="space-y-1.5">
-            <label className="text-xs font-bold uppercase tracking-wider text-slate-500 block">Expanded Text</label>
-            <textarea
-              required
-              rows={6}
-              className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-accent/5 focus:border-accent transition-all bg-slate-50/50 resize-none text-sm leading-relaxed"
-              value={formData.text}
-              onChange={(e) => setFormData({ ...formData, text: e.target.value })}
-              placeholder="Enter the full text to insert..."
-            />
+          {/* Footer Action */}
+          <div className="p-6 bg-[#0A0A0A] border-t border-white/5">
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full group bg-accent hover:bg-accent-light text-white py-4 rounded-2xl font-display font-black tracking-tight text-lg shadow-accent-glow hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 flex items-center justify-center gap-3"
+            >
+              {loading ? (
+                <Loader2 className="w-6 h-6 animate-spin" />
+              ) : (
+                <>
+                  <Save className="w-5 h-5" />
+                  <span>Update Vault</span>
+                </>
+              )}
+            </button>
           </div>
-
-          <div className="space-y-xs">
-            <label className="text-label text-slate-500 font-medium uppercase tracking-wider">Category</label>
-            <input
-              className="w-full px-sm py-2 border border-slate-200 rounded-md focus:ring-2 focus:ring-accent outline-none text-sm"
-              value={formData.category}
-              onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-              placeholder="e.g. Professional, Personal"
-            />
-          </div>
-        </div>
-
-        <div className="p-md border-t border-slate-100 bg-slate-50">
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full flex items-center justify-center gap-sm bg-accent text-white py-2 rounded-md font-semibold hover:bg-slate-800 transition-all disabled:opacity-50"
-          >
-            {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : (
-              <>
-                <Save className="w-4 h-4" />
-                <span>Save Snippet</span>
-              </>
-            )}
-          </button>
-        </div>
-      </form>
+        </form>
+      </div>
     </div>
   );
 };

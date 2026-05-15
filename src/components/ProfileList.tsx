@@ -27,122 +27,129 @@ export const ProfileList = () => {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-48">
-        <Loader2 className="w-6 h-6 animate-spin text-slate-400" />
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="w-8 h-8 animate-spin text-accent" />
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Active Profile Banner */}
-      {activeProfile && (
-        <div className="mx-4 mt-6 p-5 bg-accent/10 border border-accent/20 rounded-2xl relative overflow-hidden group">
-          <div className="absolute top-0 right-0 w-32 h-32 bg-accent/20 blur-[60px] -mr-16 -mt-16 pointer-events-none" />
-          <div className="flex items-center gap-4 mb-5 relative z-10">
-            <div className="w-10 h-10 bg-accent text-white rounded-xl flex items-center justify-center shadow-accent-glow">
-              <User className="w-5 h-5" />
-            </div>
-            <div>
-              <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-accent-light mb-0.5">Active Persona</h3>
-              <p className="text-base font-display font-bold text-white tracking-tight">{activeProfile.name}</p>
+    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+      {/* Primary Identity Display */}
+      <div className="bg-gradient-to-b from-[#0A0A0A] to-black border border-white/5 rounded-[2rem] p-8 relative overflow-hidden group">
+        <div className="absolute top-0 right-0 p-8 opacity-[0.02] group-hover:opacity-[0.05] transition-opacity pointer-events-none">
+          <User className="w-48 h-48" />
+        </div>
+        
+        <div className="relative z-10">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="px-3 py-1 bg-accent/20 border border-accent/20 rounded-full">
+              <span className="text-[10px] font-mono font-black text-accent-light uppercase tracking-[0.2em]">Primary Persona</span>
             </div>
           </div>
           
-          <div className="grid grid-cols-2 gap-2 relative z-10">
+          <h2 className="text-4xl font-display font-black tracking-tight text-white mb-2 leading-none">
+            {activeProfile?.full_name || 'Anonymous'}
+          </h2>
+          <p className="text-muted text-sm font-medium tracking-wide opacity-60">
+            {activeProfile?.title || 'System Identity Restricted'}
+          </p>
+
+          <div className="grid grid-cols-2 gap-2 mt-8">
             {[
-              { label: 'Name', value: activeProfile.full_name, icon: User },
-              { label: 'Email', value: activeProfile.email, icon: Mail },
-              { label: 'Phone', value: activeProfile.phone, icon: Phone },
-              { label: 'LinkedIn', value: activeProfile.linkedin_url, icon: Linkedin },
-              { label: 'Portfolio', value: activeProfile.portfolio_url, icon: Globe },
-              { label: 'Location', value: activeProfile.location, icon: MapPin },
+              { label: 'Email', value: activeProfile?.email, icon: Mail },
+              { label: 'Phone', value: activeProfile?.phone, icon: Phone },
+              { label: 'LinkedIn', value: activeProfile?.linkedin_url, icon: Linkedin },
+              { label: 'Portfolio', value: activeProfile?.portfolio_url, icon: Globe },
             ].filter(f => f.value).map((field) => (
               <button
                 key={field.label}
                 onClick={() => handleCopy(field.value, field.label)}
-                className="flex items-center gap-2.5 p-2 bg-white/5 border border-white/5 rounded-xl hover:bg-white/10 hover:border-white/10 transition-all duration-300 text-left group/field"
+                className="flex items-center gap-3 p-3 bg-white/5 border border-white/5 rounded-xl hover:bg-white/10 hover:border-white/10 transition-all text-left group/field"
               >
-                <div className="p-1.5 rounded-lg bg-surface group-hover/field:bg-accent/20 transition-colors">
-                  <field.icon className="w-3 h-3 text-muted group-hover/field:text-accent-light" />
+                <div className="p-2 rounded-lg bg-black/50 group-hover/field:bg-accent/20 transition-colors">
+                  <field.icon className="w-3.5 h-3.5 text-muted group-hover/field:text-accent-light" />
                 </div>
                 <div className="flex flex-col min-w-0">
-                  <span className="text-[8px] font-bold uppercase tracking-tighter text-muted group-hover/field:text-accent-light/70">{field.label}</span>
-                  <span className="text-[10px] font-medium text-slate-200 truncate">{field.value}</span>
+                  <span className="text-[8px] font-black uppercase tracking-widest text-muted group-hover/field:text-accent-light/70 leading-none mb-1">{field.label}</span>
+                  <span className="text-[10px] font-bold text-slate-200 truncate">{field.value}</span>
                 </div>
               </button>
             ))}
           </div>
         </div>
-      )}
-
-      <div className="flex items-center justify-between px-6 pt-8 pb-4">
-        <h2 className="text-[10px] font-black uppercase tracking-[0.3em] text-muted">All Vaults</h2>
-        <button
-          onClick={() => setIsAdding(true)}
-          className="w-8 h-8 flex items-center justify-center bg-accent/10 text-accent-light rounded-lg hover:bg-accent hover:text-white transition-all duration-300"
-        >
-          <Plus className="w-4 h-4" />
-        </button>
       </div>
 
-      <div className="px-4 space-y-2">
-        {profiles.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-12 text-center">
-            <div className="w-16 h-16 bg-surface rounded-2xl flex items-center justify-center mb-4 border border-white/5">
-              <User className="w-8 h-8 text-muted/30" />
-            </div>
-            <p className="text-sm font-medium text-muted">Initialize your first persona</p>
-          </div>
-        ) : (
-          profiles.map((profile) => (
-            <div
-              key={profile.id}
-              className={`group flex items-center justify-between p-4 rounded-2xl border transition-all duration-500 cursor-pointer ${
-                profile.is_active 
-                  ? 'bg-accent/5 border-accent/20 shadow-lg shadow-accent/5' 
-                  : 'bg-surface/40 border-white/5 hover:border-white/20 hover:bg-surface/60'
-              }`}
-              onClick={() => toggleActiveProfile(profile.id)}
-            >
-              <div className="flex items-center gap-4">
-                <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all duration-500 ${
-                  profile.is_active ? 'bg-accent text-white shadow-accent-glow' : 'bg-surface-lighter text-muted group-hover:text-white'
-                }`}>
-                  {profile.is_active ? <CheckCircle2 className="w-5 h-5" /> : <User className="w-5 h-5" />}
-                </div>
-                <div className="flex flex-col">
-                  <span className={`text-sm font-display font-bold tracking-tight transition-colors ${profile.is_active ? 'text-white' : 'text-slate-300'}`}>
-                    {profile.name}
-                  </span>
-                  <span className="text-[10px] font-medium text-muted">
-                    {profile.full_name || 'Empty Profile'}
-                  </span>
-                </div>
-              </div>
+      {/* Identity Selection */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between px-2">
+          <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-muted">Identity Vault</h3>
+          <button
+            onClick={() => setIsAdding(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 text-[10px] font-black uppercase tracking-widest text-white rounded-xl border border-white/5 transition-all"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            <span>Add Persona</span>
+          </button>
+        </div>
 
-              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all duration-300 transform translate-x-2 group-hover:translate-x-0">
-                <button
-                  onClick={(e) => { e.stopPropagation(); setEditingProfile(profile); }}
-                  className="p-2 text-muted hover:text-white hover:bg-white/5 rounded-lg transition-colors"
-                >
-                  <Edit2 className="w-3.5 h-3.5" />
-                </button>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (confirm(`Archive persona "${profile.name}"?`)) {
-                      deleteProfile(profile.id);
-                    }
-                  }}
-                  className="p-2 text-muted hover:text-red-400 hover:bg-red-400/5 rounded-lg transition-colors"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
-              </div>
+        <div className="grid gap-3">
+          {profiles.length === 0 ? (
+            <div className="py-12 border-2 border-dashed border-white/5 rounded-3xl flex flex-col items-center justify-center text-muted">
+              <User className="w-12 h-12 opacity-10 mb-4" />
+              <p className="text-xs font-bold uppercase tracking-widest">Vault Empty</p>
             </div>
-          ))
-        )}
+          ) : (
+            profiles.map((profile) => (
+              <div
+                key={profile.id}
+                className={`group p-5 rounded-[1.5rem] border transition-all duration-500 cursor-pointer relative overflow-hidden ${
+                  profile.is_active 
+                    ? 'bg-accent/5 border-accent/30 shadow-accent-glow' 
+                    : 'bg-white/[0.02] border-white/5 hover:border-white/10'
+                }`}
+                onClick={() => toggleActiveProfile(profile.id)}
+              >
+                <div className="flex items-center justify-between relative z-10">
+                  <div className="flex items-center gap-4">
+                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all duration-500 ${
+                      profile.is_active ? 'bg-accent text-white shadow-lg shadow-accent/20' : 'bg-white/5 text-muted group-hover:text-white'
+                    }`}>
+                      {profile.is_active ? <CheckCircle2 className="w-6 h-6" /> : <User className="w-6 h-6" />}
+                    </div>
+                    <div>
+                      <h4 className="font-display font-bold text-white tracking-tight leading-tight">{profile.full_name}</h4>
+                      <p className="text-[11px] text-muted font-medium opacity-60">{profile.title || 'No title set'}</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all transform translate-x-2 group-hover:translate-x-0">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setEditingProfile(profile);
+                      }}
+                      className="p-2.5 text-muted hover:text-white hover:bg-white/5 rounded-xl transition-colors"
+                    >
+                      <Edit2 className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (confirm(`Archive identity "${profile.full_name}"?`)) {
+                          deleteProfile(profile.id);
+                        }
+                      }}
+                      className="p-2.5 text-muted hover:text-red-400 hover:bg-red-400/5 rounded-xl transition-colors"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
       </div>
 
       {(isAdding || editingProfile) && (
