@@ -22,11 +22,7 @@ export const ProfileList = () => {
   }, []);
 
   const handleCopy = async (text: string | null | undefined, label: string) => {
-    const success = await copyToClipboard(text, label);
-    if (success) {
-      setCopiedField(label);
-      setTimeout(() => setCopiedField(null), 2000);
-    }
+    await copyToClipboard(text, label);
   };
 
   if (loading) {

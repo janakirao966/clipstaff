@@ -24,7 +24,7 @@ export const SnippetList = () => {
   );
 
   const handleCopy = async (text: string, id: string, shortcut: string) => {
-    const success = await copyToClipboard(text, `/${shortcut}`);
+    const success = await copyToClipboard(text, shortcut);
     if (success) {
       setCopiedId(id);
       setTimeout(() => setCopiedId(null), 2000);
