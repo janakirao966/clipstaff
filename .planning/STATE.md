@@ -36,3 +36,9 @@ See: .planning/PROJECT.md (updated 2026-05-15)
 ## Known Issues
 
 (None)
+
+## Pending Todos
+
+- [ ] Add ATS Scoring and JD Analysis
+- [ ] Add AI Prompt Refinement Assistant
+- [ ] Add Editor UI Utilities
