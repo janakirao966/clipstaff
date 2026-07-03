@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
+import { useStore } from '../store/useStore';
 
 interface AuthContextType {
   user: User | null;
@@ -37,7 +38,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const signOut = async () => {
-    await supabase.auth.signOut();
+    try {
+      // 1. Sign out from Supabase
+      await supabase.auth.signOut();
+      
+      // 2. Clear chrome local storage shortcuts
+      if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+        chrome.storage.local.remove(['clipstaff_shortcuts'], () => {
+          console.log('ClipStaff: Cleared shortcuts on logout');
+        });
+      }
+      
+      // 3. Reset Zustand store
+      useStore.getState().resetStore();
+    } catch (err) {
+      console.error('Error during signOut:', err);
+    }
   };
 
   return (

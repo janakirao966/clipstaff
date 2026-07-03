@@ -1,116 +1,72 @@
 import { supabase } from '../lib/supabase';
-import { useStore, Profile } from '../store/useStore';
+import { useStore } from '../store/useStore';
+import { Profile } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 
 export const useProfiles = () => {
   const { user } = useAuth();
   const { 
     setProfiles, 
-    setActiveProfile, 
-    addProfile, 
-    updateProfileInStore, 
-    deleteProfileFromStore 
+    setActiveProfile 
   } = useStore();
 
-  const fetchProfiles = async () => {
+  const fetchProfile = async () => {
     if (!user) return;
     const { data, error } = await supabase
       .from('profiles')
       .select('*')
-      .order('created_at', { ascending: false });
+      .eq('user_id', user.id)
+      .limit(1);
 
     if (error) throw error;
-    setProfiles(data || []);
     
-    const active = data?.find(p => p.is_active);
-    if (active) setActiveProfile(active);
+    const profile = data?.[0] || null;
+    if (profile) {
+      setProfiles([profile]);
+      setActiveProfile(profile);
+    }
+    return profile;
   };
 
-  const createProfile = async (profile: Omit<Profile, 'id' | 'user_id' | 'created_at' | 'updated_at'>) => {
+  const saveProfile = async (updates: Omit<Profile, 'id' | 'user_id' | 'created_at' | 'updated_at'>) => {
     if (!user) return;
     
-    // If new profile is active, unset others first
-    if (profile.is_active) {
-      await supabase
+    // Check if profile exists
+    const { data: existing } = await supabase
+      .from('profiles')
+      .select('id')
+      .eq('user_id', user.id)
+      .limit(1);
+
+    let result;
+    if (existing && existing.length > 0) {
+      // Update
+      const { data, error } = await supabase
         .from('profiles')
-        .update({ is_active: false })
-        .eq('user_id', user.id);
+        .update({ ...updates, is_active: true })
+        .eq('id', existing[0].id)
+        .select()
+        .single();
+      if (error) throw error;
+      result = data;
+    } else {
+      // Insert
+      const { data, error } = await supabase
+        .from('profiles')
+        .insert([{ ...updates, user_id: user.id, is_active: true }])
+        .select()
+        .single();
+      if (error) throw error;
+      result = data;
     }
 
-    const { data, error } = await supabase
-      .from('profiles')
-      .insert([{ ...profile, user_id: user.id }])
-      .select()
-      .single();
-
-    if (error) throw error;
-    addProfile(data);
-    if (data.is_active) setActiveProfile(data);
-    return data;
-  };
-
-  const updateProfile = async (id: string, updates: Partial<Profile>) => {
-    if (!user) return;
-
-    // If setting to active, unset others first
-    if (updates.is_active) {
-      await supabase
-        .from('profiles')
-        .update({ is_active: false })
-        .eq('user_id', user.id);
-    }
-
-    const { data, error } = await supabase
-      .from('profiles')
-      .update(updates)
-      .eq('id', id)
-      .select()
-      .single();
-
-    if (error) throw error;
-    updateProfileInStore(data);
-    return data;
-  };
-
-  const deleteProfile = async (id: string) => {
-    const { error } = await supabase
-      .from('profiles')
-      .delete()
-      .eq('id', id);
-
-    if (error) throw error;
-    deleteProfileFromStore(id);
-  };
-
-  const toggleActiveProfile = async (id: string) => {
-    if (!user) return;
-
-    // 1. Unset all
-    await supabase
-      .from('profiles')
-      .update({ is_active: false })
-      .eq('user_id', user.id);
-
-    // 2. Set target
-    const { data, error } = await supabase
-      .from('profiles')
-      .update({ is_active: true })
-      .eq('id', id)
-      .select()
-      .single();
-
-    if (error) throw error;
-    
-    // 3. Refresh local store (simpler than manual update of all items)
-    await fetchProfiles();
-    return data;
+    setProfiles([result]);
+    setActiveProfile(result);
+    return result;
   };
 
   return {
-    fetchProfiles,
-    createProfile,
-    updateProfile,
-    deleteProfile,
-    toggleActiveProfile
+    fetchProfile,
+    saveProfile
   };
 };

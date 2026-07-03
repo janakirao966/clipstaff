@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase';
-import { useStore, Snippet } from '../store/useStore';
+import { useStore } from '../store/useStore';
+import { Snippet } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 
 export const useSnippets = () => {

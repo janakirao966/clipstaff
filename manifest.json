@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
-  "name": "ClipStaff",
-  "version": "0.0.1",
+  "name": "ClipStaff PRO",
+  "version": "0.0.5",
   "description": "Recruitment Clipboard Assistant Browser Extension",
   "icons": {
     "16": "public/icons/icon16.png",
@@ -9,14 +9,18 @@
     "128": "public/icons/icon128.png"
   },
   "permissions": [
-    "sidePanel",
     "storage",
     "activeTab",
     "clipboardWrite",
-    "scripting"
+    "clipboardRead",
+    "scripting",
+    "downloads"
   ],
   "host_permissions": [
-    "<all_urls>"
+    "https://*/*",
+    "http://*/*",
+    "https://docs.google.com/*",
+    "https://*.googleusercontent.com/*"
   ],
   "action": {
     "default_icon": {
@@ -25,18 +29,33 @@
       "128": "public/icons/icon128.png"
     }
   },
-  "side_panel": {
-    "default_path": "index.html"
-  },
+  "options_page": "index.html",
   "background": {
     "service_worker": "src/background.ts",
     "type": "module"
   },
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
+      "matches": ["https://*/*", "http://*/*"],
       "js": ["src/content.ts"],
-      "run_at": "document_idle"
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' https://*.supabase.co https://docs.google.com https://*.googleusercontent.com https://generativelanguage.googleapis.com;"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "public/icons/icon16.png",
+        "public/icons/icon48.png",
+        "public/icons/icon128.png",
+        "public/icon.svg",
+        "index.html",
+        "assets/*"
+      ],
+      "matches": ["<all_urls>"]
     }
   ]
 }
