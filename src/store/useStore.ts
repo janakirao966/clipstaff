@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { persist, createJSONStorage } from 'zustand/middleware';
+import { persist, createJSONStorage, StateStorage } from 'zustand/middleware';
 import { Profile, Snippet, Job } from '../types';
 
 interface ProfileSlice {
@@ -45,6 +45,41 @@ interface EligibilitySlice {
   setCheckerJdText: (text: string) => void;
   setLastEligibilityResult: (result: any) => void;
 }
+
+const chromeExtensionStorage: StateStorage = {
+  getItem: (name: string): string | null | Promise<string | null> => {
+    if (typeof chrome === 'undefined' || !chrome.storage?.local) {
+      return localStorage.getItem(name);
+    }
+    return new Promise((resolve) => {
+      chrome.storage.local.get([name], (result) => {
+        resolve(result[name] || null);
+      });
+    });
+  },
+  setItem: (name: string, value: string): void | Promise<void> => {
+    if (typeof chrome === 'undefined' || !chrome.storage?.local) {
+      localStorage.setItem(name, value);
+      return;
+    }
+    return new Promise((resolve) => {
+      chrome.storage.local.set({ [name]: value }, () => {
+        resolve();
+      });
+    });
+  },
+  removeItem: (name: string): void | Promise<void> => {
+    if (typeof chrome === 'undefined' || !chrome.storage?.local) {
+      localStorage.removeItem(name);
+      return;
+    }
+    return new Promise((resolve) => {
+      chrome.storage.local.remove([name], () => {
+        resolve();
+      });
+    });
+  }
+};
 
 export const useStore = create<ProfileSlice & SnippetSlice & JobSlice & EligibilitySlice>()(
   persist(
@@ -152,7 +187,7 @@ export const useStore = create<ProfileSlice & SnippetSlice & JobSlice & Eligibil
     {
       name: 'clipstaff-storage',
       version: 1,
-      storage: createJSONStorage(() => localStorage),
+      storage: createJSONStorage(() => chromeExtensionStorage),
       migrate: (persistedState: any, version: number) => {
         if (version === 0 && persistedState && persistedState.profileTriggers) {
           const triggers = persistedState.profileTriggers;

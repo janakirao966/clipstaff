@@ -8,9 +8,10 @@
 | # | Phase | Goal | Requirements | Status |
 |---|-------|------|--------------|--------|
 | 1 | Foundation | 2/2 | Complete   | 2026-05-14 |
-| 2 | Data Management | 2/3 | In Progress|  |
-| 3 | Core Extension Features | Click-to-copy, clipboard writing, toast notifications, and basic content script structure | ACTN-01, ACTN-02 | Pending |
-| 4 | Shortcut Engine | 0/3 | Planned    |  |
+| 2 | Data Management | 2/3 | Complete   | 2026-06-15 |
+| 3 | Core Extension Features | Click-to-copy, clipboard writing, toast notifications, and basic content script structure | Complete | 2026-06-30 |
+| 4 | Shortcut Engine | 0/3 | Complete    | 2026-07-04 |
+| 5 | Persistent Job Tracking | Capture tab URLs directly, context menus, keyboard triggers, IndexedDB local database | Complete | 2026-07-07 |
 
 ## Phase Details
 
@@ -47,6 +48,16 @@
 **Success criteria:**
 1. Typing a snippet shortcut and pressing Tab expands the shortcut into the full snippet text in a standard textarea.
 2. Shortcut expansion successfully triggers necessary input events so modern React/Angular forms detect the value change.
+
+### Phase 5: Persistent Job Tracking
+**Goal:** Local persistent tracking of job application URLs using IndexedDB with keyboard shortcuts and context menus
+**Requirements:** APP-01, APP-02, APP-03, APP-04
+**UI hint:** yes
+**Success criteria:**
+1. Jobs can be stored in and retrieved from a local IndexedDB database.
+2. Users can save the current page URL directly using a context menu option or keyboard shortcut (`Alt+Shift+S`).
+3. Webpage-level toasts display confirmation feedback to users upon saving.
+4. Google Sheet synced jobs can be imported to the local IndexedDB database.
 
 ---
 *Roadmap defined: 2026-05-15*

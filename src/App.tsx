@@ -39,7 +39,7 @@ function MainContent() {
   const { user, signOut } = useAuth();
   const { snippets, dynamicShortcuts, activeProfile, profileTriggers } = useStore();
   const { fetchProfile } = useProfiles();
-  const [activeTab, setActiveTab] = React.useState<'vault' | 'resume' | 'jobs' | 'eligibility'>('vault');
+  const [activeTab, setActiveTab] = React.useState<'vault' | 'resume' | 'jobs' | 'match'>('vault');
   const [profileOpen, setProfileOpen] = React.useState(false);
   
   const isIframe = React.useMemo(() => window.self !== window.top, []);
@@ -141,13 +141,13 @@ function MainContent() {
         </div>
       </header>
 
-      {/* Navigation: Vault + Resume Builder + Jobs + Eligibility */}
+      {/* Navigation: Vault + Resume Builder + Jobs + Match */}
       <nav className="flex bg-carbon border-b border-graphite px-2" role="tablist">
         <button
           role="tab"
           aria-selected={activeTab === 'vault'}
           onClick={() => setActiveTab('vault')}
-          className={`flex-1 flex items-center justify-center gap-1.5 py-3 text-[10px] font-medium tracking-tight transition-all relative ${
+          className={`flex-1 flex items-center justify-center gap-2 py-3.5 text-[11px] font-medium tracking-tight transition-all relative ${
             activeTab === 'vault' 
               ? 'text-accent border-b-2 border-accent' 
               : 'text-ash hover:text-mist border-b-2 border-transparent'
@@ -160,7 +160,7 @@ function MainContent() {
           role="tab"
           aria-selected={activeTab === 'resume'}
           onClick={() => setActiveTab('resume')}
-          className={`flex-1 flex items-center justify-center gap-1.5 py-3 text-[10px] font-medium tracking-tight transition-all relative ${
+          className={`flex-1 flex items-center justify-center gap-2 py-3.5 text-[11px] font-medium tracking-tight transition-all relative ${
             activeTab === 'resume' 
               ? 'text-accent border-b-2 border-accent' 
               : 'text-ash hover:text-mist border-b-2 border-transparent'
@@ -173,7 +173,7 @@ function MainContent() {
           role="tab"
           aria-selected={activeTab === 'jobs'}
           onClick={() => setActiveTab('jobs')}
-          className={`flex-1 flex items-center justify-center gap-1.5 py-3 text-[10px] font-medium tracking-tight transition-all relative ${
+          className={`flex-1 flex items-center justify-center gap-2 py-3.5 text-[11px] font-medium tracking-tight transition-all relative ${
             activeTab === 'jobs' 
               ? 'text-accent border-b-2 border-accent' 
               : 'text-ash hover:text-mist border-b-2 border-transparent'
@@ -184,16 +184,16 @@ function MainContent() {
         </button>
         <button
           role="tab"
-          aria-selected={activeTab === 'eligibility'}
-          onClick={() => setActiveTab('eligibility')}
-          className={`flex-1 flex items-center justify-center gap-1.5 py-3 text-[10px] font-medium tracking-tight transition-all relative ${
-            activeTab === 'eligibility' 
+          aria-selected={activeTab === 'match'}
+          onClick={() => setActiveTab('match')}
+          className={`flex-1 flex items-center justify-center gap-2 py-3.5 text-[11px] font-medium tracking-tight transition-all relative ${
+            activeTab === 'match' 
               ? 'text-accent border-b-2 border-accent' 
               : 'text-ash hover:text-mist border-b-2 border-transparent'
           }`}
         >
           <ShieldCheck className="w-3.5 h-3.5" aria-hidden="true" />
-          Eligibility
+          Match
         </button>
       </nav>
 
@@ -203,7 +203,7 @@ function MainContent() {
           {activeTab === 'vault' && <UnifiedVault onAutofill={handleAutofillPage} />}
           {activeTab === 'resume' && <ResumeBuilder />}
           {activeTab === 'jobs' && <JobList />}
-          {activeTab === 'eligibility' && <EligibilityChecker />}
+          {activeTab === 'match' && <EligibilityChecker />}
         </div>
       </main>
 

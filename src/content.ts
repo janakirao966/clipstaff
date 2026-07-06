@@ -158,7 +158,73 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     sendResponse({ status: 'done' });
     return true;
   }
+  if (message.type === 'SHOW_PAGE_TOAST') {
+    showPageToast(message.message);
+    sendResponse({ status: 'done' });
+    return true;
+  }
 });
+
+function showPageToast(message: string) {
+  const existing = document.getElementById('clipstaff-page-toast');
+  if (existing) {
+    existing.remove();
+  }
+
+  const toastEl = document.createElement('div');
+  toastEl.id = 'clipstaff-page-toast';
+  toastEl.style.cssText = `
+    position: fixed !important;
+    bottom: 24px !important;
+    right: 24px !important;
+    background: #0A0A0A !important;
+    color: #F8FAFC !important;
+    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    border-radius: 8px !important;
+    padding: 12px 18px !important;
+    font-size: 13px !important;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
+    font-weight: 500 !important;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5), 0 0 15px rgba(0, 242, 254, 0.08) !important;
+    z-index: 2147483647 !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+    pointer-events: none !important;
+    transform: translateY(20px) !important;
+    opacity: 0 !important;
+    transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease !important;
+  `;
+
+  const checkIcon = document.createElement('span');
+  checkIcon.innerHTML = '✓';
+  checkIcon.style.cssText = `
+    color: #00F2FE !important;
+    font-weight: bold !important;
+  `;
+  toastEl.appendChild(checkIcon);
+
+  const textEl = document.createElement('span');
+  textEl.innerText = message;
+  toastEl.appendChild(textEl);
+
+  document.body.appendChild(toastEl);
+
+  requestAnimationFrame(() => {
+    toastEl.style.setProperty('transform', 'translateY(0)', 'important');
+    toastEl.style.setProperty('opacity', '1', 'important');
+  });
+
+  setTimeout(() => {
+    toastEl.style.setProperty('transform', 'translateY(10px)', 'important');
+    toastEl.style.setProperty('opacity', '0', 'important');
+    setTimeout(() => {
+      if (document.body.contains(toastEl)) {
+        toastEl.remove();
+      }
+    }, 300);
+  }, 3000);
+}
 
 function injectText(text: string) {
   const el = lastFocusedInput;
@@ -268,7 +334,7 @@ async function handleTriggerExpansion(element: HTMLElement, event: KeyboardEvent
 
   try {
     if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) {
-      isRestrictedInput = ['number', 'date', 'month', 'week', 'time', 'datetime-local', 'range', 'color'].includes(element.type);
+      isRestrictedInput = ['password', 'email', 'number', 'date', 'month', 'week', 'time', 'datetime-local', 'range', 'color'].includes(element.type);
       
       if (isRestrictedInput) {
         textBeforeCursor = element.value || '';
@@ -418,7 +484,7 @@ async function handleInstantExpansion(element: HTMLElement) {
 
   try {
     if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) {
-      isRestrictedInput = ['number', 'date', 'month', 'week', 'time', 'datetime-local', 'range', 'color'].includes(element.type);
+      isRestrictedInput = ['password', 'email', 'number', 'date', 'month', 'week', 'time', 'datetime-local', 'range', 'color'].includes(element.type);
       
       if (isRestrictedInput) {
         textBeforeCursor = element.value || '';

@@ -14,8 +14,18 @@
     "clipboardWrite",
     "clipboardRead",
     "scripting",
-    "downloads"
+    "downloads",
+    "contextMenus"
   ],
+  "commands": {
+    "save-current-job": {
+      "suggested_key": {
+        "default": "Alt+Shift+J",
+        "mac": "Alt+Shift+J"
+      },
+      "description": "Save current job application URL to ClipStaff"
+    }
+  },
   "host_permissions": [
     "https://*/*",
     "http://*/*",
