@@ -85,3 +85,16 @@
 .rb-bullet::before { content: "•"; position: absolute; left: 0; width: 8pt; text-align: left; color: #000000; }
 .rb-edu-row { display: flex; justify-content: space-between; align-items: baseline; margin-top: 10pt; margin-bottom: 2px; font-weight: bold; font-size: 11pt; color: #000000; font-family: 'Times New Roman', Times, serif; }
 .rb-edu-school { font-size: 11pt; color: #000000; font-weight: normal; margin-bottom: 4pt; text-align: left; font-family: 'Times New Roman', Times, serif; }
+
+/* Accessibility: Respect prefers-reduced-motion settings */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-delay: -1ms !important;
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    background-attachment: initial !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0s !important;
+    transition-delay: 0s !important;
+  }
+}
