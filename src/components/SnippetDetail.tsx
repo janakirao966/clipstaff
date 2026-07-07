@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useSnippets } from '../hooks/useSnippets';
 import { X, Save, Hash, Type } from 'lucide-react';
 import { Button } from './ui';
@@ -17,6 +17,7 @@ export const SnippetDetail: React.FC<SnippetDetailProps> = ({ snippet, onClose }
     text: snippet?.text || '',
     category: snippet?.category || 'General',
   });
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -39,6 +40,40 @@ export const SnippetDetail: React.FC<SnippetDetailProps> = ({ snippet, onClose }
       setLoading(false);
     }
   };
+
+  const insertPlaceholder = (tag: string) => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const currentText = formData.text;
+    
+    const before = currentText.substring(0, start);
+    const after = currentText.substring(end, currentText.length);
+    const tagString = `{{${tag}}}`;
+    const newText = before + tagString + after;
+    
+    setFormData({ ...formData, text: newText });
+
+    // Focus and adjust cursor position
+    setTimeout(() => {
+      textarea.focus();
+      const newCursorPos = start + tagString.length;
+      textarea.setSelectionRange(newCursorPos, newCursorPos);
+    }, 0);
+  };
+
+  const placeholders = [
+    { label: 'Name', tag: 'full_name' },
+    { label: 'Email', tag: 'email' },
+    { label: 'Phone', tag: 'phone' },
+    { label: 'LinkedIn', tag: 'linkedin' },
+    { label: 'Portfolio', tag: 'portfolio' },
+    { label: 'Company', tag: 'company' },
+    { label: 'Role', tag: 'role' },
+    { label: 'Custom Prompt', tag: 'custom_variable' },
+  ];
 
   return (
     <div className="fixed inset-0 z-[100] flex flex-col bg-black/90 backdrop-blur-sm animate-in fade-in duration-300">
@@ -87,13 +122,31 @@ export const SnippetDetail: React.FC<SnippetDetailProps> = ({ snippet, onClose }
               <div className="relative group">
                 <Type className="absolute left-4 top-5 w-4 h-4 text-muted group-focus-within:text-accent transition-colors" />
                 <textarea
+                  ref={textareaRef}
                   required
-                  rows={8}
+                  rows={6}
                   placeholder="Enter the full text to expand..."
                   className="w-full pl-12 pr-4 py-4 bg-black border border-white/5 rounded-xl text-sm text-white placeholder:text-muted/10 focus:outline-none focus:border-accent/40 transition-all resize-none leading-relaxed"
                   value={formData.text}
                   onChange={(e) => setFormData({ ...formData, text: e.target.value })}
                 />
+              </div>
+
+              {/* Placeholder Insert Bar */}
+              <div className="space-y-1">
+                <div className="text-[9px] font-bold uppercase tracking-wider text-muted ml-1 mb-1">Insert Placeholder</div>
+                <div className="flex flex-wrap gap-1 px-1">
+                  {placeholders.map((p) => (
+                    <button
+                      key={p.tag}
+                      type="button"
+                      onClick={() => insertPlaceholder(p.tag)}
+                      className="px-2 py-1 bg-white/5 hover:bg-accent/15 border border-white/5 hover:border-accent/25 text-[10px] text-mist hover:text-accent font-medium rounded-md transition-all duration-150 active:scale-95"
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
 

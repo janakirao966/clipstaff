@@ -3,8 +3,11 @@
  */
 
 import { initSpotlight } from './lib/spotlight';
+import { resolveTemplate } from './lib/templateHelper';
+import { showHudPrompt } from './lib/hud';
 
 let shortcutCache: Record<string, string> = {};
+let activeProfileCache: any = null;
 let lastFocusedInput: HTMLElement | null = null;
 
 document.addEventListener('focusin', (e) => {
@@ -17,10 +20,13 @@ document.addEventListener('focusin', (e) => {
 // Load from storage on init
 const loadCacheFromStorage = () => {
   if (typeof chrome !== 'undefined' && chrome.storage) {
-    chrome.storage.local.get(['clipstaff_shortcuts'], (result) => {
+    chrome.storage.local.get(['clipstaff_shortcuts', 'clipstaff_active_profile'], (result) => {
       if (result.clipstaff_shortcuts) {
         shortcutCache = result.clipstaff_shortcuts;
         console.log('ClipStaff: Live Cache Ready', Object.keys(shortcutCache).length, 'keys');
+      }
+      if (result.clipstaff_active_profile) {
+        activeProfileCache = result.clipstaff_active_profile;
       }
     });
   }
@@ -29,9 +35,14 @@ const loadCacheFromStorage = () => {
 // Listen for storage changes
 if (typeof chrome !== 'undefined' && chrome.storage) {
   chrome.storage.onChanged.addListener((changes, areaName) => {
-    if (areaName === 'local' && changes.clipstaff_shortcuts) {
-      shortcutCache = changes.clipstaff_shortcuts.newValue || {};
-      console.log('ClipStaff: Live Cache Updated');
+    if (areaName === 'local') {
+      if (changes.clipstaff_shortcuts) {
+        shortcutCache = changes.clipstaff_shortcuts.newValue || {};
+        console.log('ClipStaff: Live Cache Updated');
+      }
+      if (changes.clipstaff_active_profile) {
+        activeProfileCache = changes.clipstaff_active_profile.newValue || null;
+      }
     }
   });
 }
@@ -370,11 +381,115 @@ async function handleTriggerExpansion(element: HTMLElement, event: KeyboardEvent
     const expandedText = shortcutCache[shortcut];
 
     if (expandedText) {
-      // Prevent default key action (stop focus loss, raw newline, or duplicate space)
-      event.preventDefault();
+      performExpansion(element, cursorPosition, fullWord, expandedText, event, isRestrictedInput);
+    }
+  } catch (err) {
+    console.warn('ClipStaff: Trigger expansion failed', err);
+  }
+}
 
-      // Determine what to insert
-      let textToInsert = expandedText;
+function insertTextIntoElement(
+  element: HTMLElement,
+  cursorPosition: number,
+  fullWord: string,
+  textToInsert: string,
+  isRestrictedInput: boolean
+) {
+  if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) {
+    const start = cursorPosition - fullWord.length;
+    const end = cursorPosition;
+    
+    element.focus();
+    const target = element;
+
+    if (isRestrictedInput) {
+      // Direct value assignment fallback using React prototype setter
+      const nativeSetter = Object.getOwnPropertyDescriptor(
+        target.tagName === 'TEXTAREA' ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype,
+        'value'
+      )?.set;
+      
+      if (nativeSetter) {
+        nativeSetter.call(target, target.value.slice(0, start) + textToInsert + target.value.slice(end));
+      } else {
+        target.value = target.value.slice(0, start) + textToInsert + target.value.slice(end);
+      }
+      
+      ['input', 'change'].forEach(type => {
+        element.dispatchEvent(new Event(type, { bubbles: true }));
+      });
+    } else {
+      try {
+        // Use execCommand first to preserve undo/redo history and trigger React/Angular bindings
+        target.setSelectionRange(start, end);
+        const success = document.execCommand('insertText', false, textToInsert);
+        
+        if (!success) {
+          if ('setRangeText' in target) {
+            target.setRangeText(textToInsert, start, end, 'end');
+          } else {
+            (target as any).value = (target as any).value.slice(0, start) + textToInsert + (target as any).value.slice(end);
+          }
+          
+          ['input', 'change'].forEach(type => {
+            element.dispatchEvent(new Event(type, { bubbles: true }));
+          });
+        }
+      } catch (err) {
+        // Safe fallback mutation in case selection APIs fail unexpectedly
+        (target as any).value = (target as any).value.slice(0, start) + textToInsert + (target as any).value.slice(end);
+        ['input', 'change'].forEach(type => {
+          element.dispatchEvent(new Event(type, { bubbles: true }));
+        });
+      }
+    }
+  } else if (element.isContentEditable) {
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) return;
+    const range = selection.getRangeAt(0);
+    
+    range.setStart(range.startContainer, cursorPosition - fullWord.length);
+    range.setEnd(range.startContainer, cursorPosition);
+    range.deleteContents();
+    
+    // Parse newlines to text nodes + <br> elements
+    const fragment = document.createDocumentFragment();
+    const lines = textToInsert.split('\n');
+    lines.forEach((line, idx) => {
+      fragment.appendChild(document.createTextNode(line));
+      if (idx < lines.length - 1) {
+        fragment.appendChild(document.createElement('br'));
+      }
+    });
+    
+    range.insertNode(fragment);
+    
+    range.collapse(false);
+    selection.removeAllRanges();
+    selection.addRange(range);
+    
+    element.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+}
+
+function performExpansion(
+  element: HTMLElement,
+  cursorPosition: number,
+  fullWord: string,
+  expandedText: string,
+  event: KeyboardEvent | null,
+  isRestrictedInput: boolean
+) {
+  // Resolve templates
+  const { resolvedText, unresolved } = resolveTemplate(
+    expandedText,
+    activeProfileCache,
+    window.location.href
+  );
+
+  const proceedWithText = (finalText: string) => {
+    let textToInsert = finalText;
+    if (event) {
       if (event.key === ' ') {
         textToInsert += ' ';
       } else if (event.key === 'Enter') {
@@ -382,85 +497,29 @@ async function handleTriggerExpansion(element: HTMLElement, event: KeyboardEvent
           textToInsert += '\n';
         }
       }
-
-      if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) {
-        const start = cursorPosition - fullWord.length;
-        const end = cursorPosition;
-        
-        element.focus();
-        const target = element as HTMLInputElement | HTMLTextAreaElement;
-
-        if (isRestrictedInput) {
-          // Direct value assignment fallback using React prototype setter
-          const nativeSetter = Object.getOwnPropertyDescriptor(
-            target.tagName === 'TEXTAREA' ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype,
-            'value'
-          )?.set;
-          
-          if (nativeSetter) {
-            nativeSetter.call(target, target.value.slice(0, start) + textToInsert + target.value.slice(end));
-          } else {
-            target.value = target.value.slice(0, start) + textToInsert + target.value.slice(end);
-          }
-          
-          ['input', 'change'].forEach(type => {
-            element.dispatchEvent(new Event(type, { bubbles: true }));
-          });
-        } else {
-          try {
-            // Use execCommand first to preserve undo/redo history and trigger React/Angular bindings
-            target.setSelectionRange(start, end);
-            const success = document.execCommand('insertText', false, textToInsert);
-            
-            if (!success) {
-              if ('setRangeText' in target) {
-                target.setRangeText(textToInsert, start, end, 'end');
-              } else {
-                (target as any).value = (target as any).value.slice(0, start) + textToInsert + (target as any).value.slice(end);
-              }
-              
-              ['input', 'change'].forEach(type => {
-                element.dispatchEvent(new Event(type, { bubbles: true }));
-              });
-            }
-          } catch (err) {
-            // Safe fallback mutation in case selection APIs fail unexpectedly
-            (target as any).value = (target as any).value.slice(0, start) + textToInsert + (target as any).value.slice(end);
-            ['input', 'change'].forEach(type => {
-              element.dispatchEvent(new Event(type, { bubbles: true }));
-            });
-          }
-        }
-      } else if (element.isContentEditable) {
-        const selection = window.getSelection();
-        if (!selection || selection.rangeCount === 0) return;
-        const range = selection.getRangeAt(0);
-        
-        range.setStart(range.startContainer, cursorPosition - fullWord.length);
-        range.setEnd(range.startContainer, cursorPosition);
-        range.deleteContents();
-        
-        // Parse newlines to text nodes + <br> elements
-        const fragment = document.createDocumentFragment();
-        const lines = textToInsert.split('\n');
-        lines.forEach((line, idx) => {
-          fragment.appendChild(document.createTextNode(line));
-          if (idx < lines.length - 1) {
-            fragment.appendChild(document.createElement('br'));
-          }
-        });
-        
-        range.insertNode(fragment);
-        
-        range.collapse(false);
-        selection.removeAllRanges();
-        selection.addRange(range);
-        
-        element.dispatchEvent(new Event('input', { bubbles: true }));
-      }
     }
-  } catch (err) {
-    console.warn('ClipStaff: Trigger expansion failed', err);
+    insertTextIntoElement(element, cursorPosition, fullWord, textToInsert, isRestrictedInput);
+  };
+
+  if (unresolved.length > 0) {
+    if (event) event.preventDefault();
+    showHudPrompt(
+      unresolved,
+      (values) => {
+        let finalResolvedText = resolvedText;
+        Object.keys(values).forEach((key) => {
+          const regex = new RegExp(`\\{\\{\\s*${key}\\s*\\}\\}`, 'gi');
+          finalResolvedText = finalResolvedText.replace(regex, values[key]);
+        });
+        proceedWithText(finalResolvedText);
+      },
+      () => {
+        element.focus();
+      }
+    );
+  } else {
+    if (event) event.preventDefault();
+    proceedWithText(resolvedText);
   }
 }
 
@@ -518,71 +577,7 @@ async function handleInstantExpansion(element: HTMLElement) {
         const expandedText = shortcutCache[key];
         if (!expandedText) continue;
 
-        const start = cursorPosition - key.length;
-        const end = cursorPosition;
-
-        if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) {
-          element.focus();
-          const target = element as HTMLInputElement | HTMLTextAreaElement;
-
-          if (isRestrictedInput) {
-            const nativeSetter = Object.getOwnPropertyDescriptor(
-              target.tagName === 'TEXTAREA' ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype,
-              'value'
-            )?.set;
-            
-            if (nativeSetter) {
-              nativeSetter.call(target, target.value.slice(0, start) + expandedText + target.value.slice(end));
-            } else {
-              target.value = target.value.slice(0, start) + expandedText + target.value.slice(end);
-            }
-            
-            ['input', 'change'].forEach(type => {
-              element.dispatchEvent(new Event(type, { bubbles: true }));
-            });
-          } else {
-            try {
-              target.setSelectionRange(start, end);
-              const success = document.execCommand('insertText', false, expandedText);
-              
-              if (!success) {
-                if ('setRangeText' in target) {
-                  target.setRangeText(expandedText, start, end, 'end');
-                } else {
-                  (target as any).value = (target as any).value.slice(0, start) + expandedText + (target as any).value.slice(end);
-                }
-                
-                ['input', 'change'].forEach(type => {
-                  element.dispatchEvent(new Event(type, { bubbles: true }));
-                });
-              }
-            } catch (err) {
-              (target as any).value = (target as any).value.slice(0, start) + expandedText + (target as any).value.slice(end);
-              ['input', 'change'].forEach(type => {
-                element.dispatchEvent(new Event(type, { bubbles: true }));
-              });
-            }
-          }
-        } else if (element.isContentEditable) {
-          const selection = window.getSelection();
-          if (!selection || selection.rangeCount === 0) return;
-          const range = selection.getRangeAt(0);
-          
-          if (range.startContainer.nodeType === Node.TEXT_NODE) {
-            const textNode = range.startContainer;
-            const textContent = textNode.textContent || '';
-            const newContent = textContent.slice(0, start) + expandedText + textContent.slice(end);
-            textNode.textContent = newContent;
-            
-            const newOffset = start + expandedText.length;
-            range.setStart(textNode, newOffset);
-            range.setEnd(textNode, newOffset);
-            selection.removeAllRanges();
-            selection.addRange(range);
-            
-            element.dispatchEvent(new Event('input', { bubbles: true }));
-          }
-        }
+        performExpansion(element, cursorPosition, key, expandedText, null, isRestrictedInput);
         break; // Match found and expanded, stop checking keys
       }
     }

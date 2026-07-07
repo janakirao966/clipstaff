@@ -109,7 +109,10 @@ export const syncShortcutsToStorage = (
 
     // A. Persist to Storage - The content scripts will pick this up via storage.onChanged
     if (typeof chrome !== 'undefined' && chrome.storage?.local) {
-      chrome.storage.local.set({ clipstaff_shortcuts: shortcuts });
+      chrome.storage.local.set({ 
+        clipstaff_shortcuts: shortcuts,
+        clipstaff_active_profile: activeProfile
+      });
     }
   } catch (err) {
     console.error('ClipStaff: Sync Exception', err);
