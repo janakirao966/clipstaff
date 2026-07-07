@@ -30,21 +30,43 @@
     overflow: hidden;
   }
 
-  /* Custom Scrollbar for Aether Dark */
+  /* Universal input/textarea/select focus glow */
+  input[type="text"], 
+  input[type="email"], 
+  input[type="password"], 
+  textarea, 
+  select {
+    @apply transition-all duration-150 outline-none border-graphite;
+  }
+
+  input[type="text"]:focus, 
+  input[type="email"]:focus, 
+  input[type="password"]:focus, 
+  textarea:focus, 
+  select:focus {
+    @apply border-accent shadow-[0_0_10px_rgba(228,242,34,0.15)] ring-1 ring-accent/30;
+  }
+
+  /* Custom Scrollbars */
   ::-webkit-scrollbar {
-    width: 4px;
+    width: 6px;
+    height: 6px;
   }
   ::-webkit-scrollbar-track {
     background: transparent;
   }
   ::-webkit-scrollbar-thumb {
-    @apply bg-white/5 rounded-full hover:bg-white/10 transition-colors;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 9999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.15);
   }
 }
 
 @layer components {
   .glass-card {
-    @apply bg-carbon border border-graphite shadow-sm;
+    @apply bg-carbon border border-graphite shadow-sm transition-all duration-200;
   }
 }
 

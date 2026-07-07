@@ -147,10 +147,10 @@ function MainContent() {
           role="tab"
           aria-selected={activeTab === 'vault'}
           onClick={() => setActiveTab('vault')}
-          className={`flex-1 flex items-center justify-center gap-2 py-3.5 text-[11px] font-medium tracking-tight transition-all relative ${
+          className={`flex-1 flex items-center justify-center gap-2 py-3.5 text-[11px] font-medium tracking-tight transition-all duration-200 active:scale-[0.98] relative ${
             activeTab === 'vault' 
-              ? 'text-accent border-b-2 border-accent' 
-              : 'text-ash hover:text-mist border-b-2 border-transparent'
+              ? 'text-accent border-b-2 border-accent bg-accent/[0.01]' 
+              : 'text-ash hover:text-mist hover:bg-white/[0.01] border-b-2 border-transparent'
           }`}
         >
           <Zap className="w-3.5 h-3.5" aria-hidden="true" />
@@ -160,10 +160,10 @@ function MainContent() {
           role="tab"
           aria-selected={activeTab === 'resume'}
           onClick={() => setActiveTab('resume')}
-          className={`flex-1 flex items-center justify-center gap-2 py-3.5 text-[11px] font-medium tracking-tight transition-all relative ${
+          className={`flex-1 flex items-center justify-center gap-2 py-3.5 text-[11px] font-medium tracking-tight transition-all duration-200 active:scale-[0.98] relative ${
             activeTab === 'resume' 
-              ? 'text-accent border-b-2 border-accent' 
-              : 'text-ash hover:text-mist border-b-2 border-transparent'
+              ? 'text-accent border-b-2 border-accent bg-accent/[0.01]' 
+              : 'text-ash hover:text-mist hover:bg-white/[0.01] border-b-2 border-transparent'
           }`}
         >
           <FileText className="w-3.5 h-3.5" aria-hidden="true" />
@@ -173,10 +173,10 @@ function MainContent() {
           role="tab"
           aria-selected={activeTab === 'jobs'}
           onClick={() => setActiveTab('jobs')}
-          className={`flex-1 flex items-center justify-center gap-2 py-3.5 text-[11px] font-medium tracking-tight transition-all relative ${
+          className={`flex-1 flex items-center justify-center gap-2 py-3.5 text-[11px] font-medium tracking-tight transition-all duration-200 active:scale-[0.98] relative ${
             activeTab === 'jobs' 
-              ? 'text-accent border-b-2 border-accent' 
-              : 'text-ash hover:text-mist border-b-2 border-transparent'
+              ? 'text-accent border-b-2 border-accent bg-accent/[0.01]' 
+              : 'text-ash hover:text-mist hover:bg-white/[0.01] border-b-2 border-transparent'
           }`}
         >
           <Briefcase className="w-3.5 h-3.5" aria-hidden="true" />
@@ -186,10 +186,10 @@ function MainContent() {
           role="tab"
           aria-selected={activeTab === 'match'}
           onClick={() => setActiveTab('match')}
-          className={`flex-1 flex items-center justify-center gap-2 py-3.5 text-[11px] font-medium tracking-tight transition-all relative ${
+          className={`flex-1 flex items-center justify-center gap-2 py-3.5 text-[11px] font-medium tracking-tight transition-all duration-200 active:scale-[0.98] relative ${
             activeTab === 'match' 
-              ? 'text-accent border-b-2 border-accent' 
-              : 'text-ash hover:text-mist border-b-2 border-transparent'
+              ? 'text-accent border-b-2 border-accent bg-accent/[0.01]' 
+              : 'text-ash hover:text-mist hover:bg-white/[0.01] border-b-2 border-transparent'
           }`}
         >
           <ShieldCheck className="w-3.5 h-3.5" aria-hidden="true" />
