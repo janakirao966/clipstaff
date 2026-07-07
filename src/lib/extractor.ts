@@ -1,6 +1,6 @@
 export function cleanString(str: string): string {
   try {
-    let result = decodeURIComponent(str)
+    const result = decodeURIComponent(str)
       .replace(/[-_]+/g, ' ')
       .trim();
     
@@ -16,7 +16,7 @@ export function cleanString(str: string): string {
 export function extractCompanyFromUrl(urlStr: string): string {
   try {
     const url = new URL(urlStr);
-    let host = url.hostname.replace('www.', '');
+    const host = url.hostname.replace('www.', '');
 
     if (host.includes('greenhouse.io')) {
       const forParam = url.searchParams.get('for');
@@ -65,7 +65,7 @@ export function extractRoleFromUrl(urlStr: string): string {
       const segment = segments[i];
       if (/^\d+$/.test(segment) || segment.length < 5) continue;
       
-      let cleanSeg = segment
+      const cleanSeg = segment
         .split(/[?#]/)[0]
         .replace(/[-_]\d+$/, '')
         .replace(/^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}$/, '');
