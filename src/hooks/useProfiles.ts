@@ -1,7 +1,8 @@
+import { useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { useStore } from '../store/useStore';
 import { Profile } from '../types';
-import { useAuth } from '../contexts/AuthContext';
+import { useAuth } from './useAuth';
 
 export const useProfiles = () => {
   const { user } = useAuth();
@@ -10,8 +11,8 @@ export const useProfiles = () => {
     setActiveProfile 
   } = useStore();
 
-  const fetchProfile = async () => {
-    if (!user) return;
+  const fetchProfile = useCallback(async () => {
+    if (!user) return null;
     const { data, error } = await supabase
       .from('profiles')
       .select('*')
@@ -26,9 +27,9 @@ export const useProfiles = () => {
       setActiveProfile(profile);
     }
     return profile;
-  };
+  }, [user, setProfiles, setActiveProfile]);
 
-  const saveProfile = async (updates: Omit<Profile, 'id' | 'user_id' | 'created_at' | 'updated_at'>) => {
+  const saveProfile = useCallback(async (updates: Omit<Profile, 'id' | 'user_id' | 'created_at' | 'updated_at'>) => {
     if (!user) return;
     
     // Check if profile exists
@@ -63,7 +64,7 @@ export const useProfiles = () => {
     setProfiles([result]);
     setActiveProfile(result);
     return result;
-  };
+  }, [user, setProfiles, setActiveProfile]);
 
   return {
     fetchProfile,

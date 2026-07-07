@@ -1,6 +1,6 @@
 import React from 'react'
 import { Auth } from './components/Auth'
-import { useAuth } from './contexts/AuthContext'
+import { useAuth } from './hooks/useAuth'
 import { autofillForm } from './lib/autofill'
 import { UnifiedVault } from './components/UnifiedVault'
 import { ResumeBuilder } from './components/ResumeBuilder'
@@ -49,7 +49,7 @@ function MainContent() {
     if (user) {
       fetchProfile();
     }
-  }, [user]);
+  }, [user, fetchProfile]);
 
   // Automatic Shortcut Sync (Manual + Dynamic + Profile)
   React.useEffect(() => {

@@ -2,7 +2,7 @@
  * ClipStaff Content Script - Live Expansion Edition
  */
 
-import { showHUD } from './lib/spotlight';
+import { initSpotlight } from './lib/spotlight';
 
 let shortcutCache: Record<string, string> = {};
 let lastFocusedInput: HTMLElement | null = null;
@@ -460,7 +460,7 @@ async function handleTriggerExpansion(element: HTMLElement, event: KeyboardEvent
       }
     }
   } catch (err) {
-    // Fail silently in production
+    console.warn('ClipStaff: Trigger expansion failed', err);
   }
 }
 
@@ -587,20 +587,9 @@ async function handleInstantExpansion(element: HTMLElement) {
       }
     }
   } catch (err) {
-    // Fail silently
+    console.warn('ClipStaff: Instant expansion failed', err);
   }
 }
 
 // --- Spotlight Command Bar HUD Overlay ---
-
-// Global hotkey keydown listener for Alt + Shift + S to trigger overlay search
-document.addEventListener('keydown', (event) => {
-  if (event.altKey && event.shiftKey && (event.key === 'S' || event.key === 's')) {
-    const target = event.target as HTMLElement;
-    const isInput = target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable);
-    if (isInput) {
-      event.preventDefault();
-      showHUD(target, shortcutCache);
-    }
-  }
-});
+initSpotlight(() => shortcutCache);

@@ -23,7 +23,7 @@ export const SnippetList = () => {
 
   useEffect(() => {
     fetchSnippets().finally(() => setLoading(false));
-  }, []);
+  }, [fetchSnippets]);
 
   const filteredSnippets = snippets.filter(s => 
     s.shortcut.toLowerCase().includes(searchTerm.toLowerCase()) ||

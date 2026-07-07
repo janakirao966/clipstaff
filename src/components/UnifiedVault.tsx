@@ -19,6 +19,7 @@ import { handleShortcutClick, copyToClipboard } from '../lib/clipboard';
 import { Button } from './ui';
 import { Modal } from './ui/Modal';
 import { toast } from 'sonner';
+import { parseExperiencesFromResumeText } from '../lib/resumeParser';
 
 export const UnifiedVault = ({ onAutofill }: { onAutofill?: () => void }) => {
   const { snippets, searchTerm, setSearchTerm, activeProfile } = useStore();
@@ -52,61 +53,8 @@ export const UnifiedVault = ({ onAutofill }: { onAutofill?: () => void }) => {
           const p = data.profile;
           const resumeRawText = data.text || '';
 
-          // Parse experiences from text
-          let parsedExperiences: any[] = [];
-          if (resumeRawText) {
-            const normalizedText = resumeRawText.replace(/\r\n/g, '\n');
-            const boundaries = 'SUMMARY|PROFESSIONAL SUMMARY|SKILLS|TECHNICAL SKILLS|EXPERIENCE|PROFESSIONAL EXPERIENCE|EDUCATION';
-            const experienceRx = new RegExp(`(?:^|\\n)\\s*(?:\\[?(?:EXPERIENCE|PROFESSIONAL EXPERIENCE)\\]?)\\s*\\n([\\s\\S]*?)(?=(?:^|\\n)\\s*(?:\\[?(?:${boundaries})\\]?)\\s*\\n|$)`, 'i');
-            const expMatch = normalizedText.match(experienceRx);
-            
-            if (expMatch && expMatch[1]) {
-              const expBlock = expMatch[1].trim();
-              const lines = expBlock.split('\n');
-              let currentExp: any = null;
-              let descLines: string[] = [];
-
-              lines.forEach((line: string) => {
-                const t = line.trim();
-                if (t.includes('|') && !/^([-•*·]|\d+\.)/.test(t)) {
-                  if (currentExp) {
-                    currentExp.description = descLines.join('\n');
-                    parsedExperiences.push(currentExp);
-                  }
-                  const parts = t.split('|').map(x => x.trim());
-                  const company = parts[0] || '';
-                  const location = parts[1] || '';
-                  const title = parts[2] || '';
-                  const dates = parts[3] || '';
-
-                  let start_date = '';
-                  let end_date = '';
-                  if (dates) {
-                    const dateParts = dates.split(/[–-]/).map(d => d.trim());
-                    start_date = dateParts[0] || '';
-                    end_date = dateParts[1] || '';
-                  }
-
-                  currentExp = {
-                    company,
-                    title,
-                    location,
-                    start_date,
-                    end_date,
-                    description: ''
-                  };
-                  descLines = [];
-                } else if (t) {
-                  descLines.push(t.replace(/^([-•*·]|\d+\.)\s*/, ''));
-                }
-              });
-
-              if (currentExp) {
-                currentExp.description = descLines.join('\n');
-                parsedExperiences.push(currentExp);
-              }
-            }
-          }
+          // Parse experiences from text using isolated utility
+          const parsedExperiences = parseExperiencesFromResumeText(resumeRawText);
 
           const education = (p.education || []).map((edu: any) => ({
             degree: edu.degree || '',
@@ -264,6 +212,7 @@ export const UnifiedVault = ({ onAutofill }: { onAutofill?: () => void }) => {
 
     const loadingToast = toast.loading('Updating Profile...');
     try {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { id, user_id, created_at, updated_at, ...cleanUpdates } = updatedProfile as any;
       await saveProfile(cleanUpdates);
       toast.dismiss(loadingToast);
@@ -277,7 +226,7 @@ export const UnifiedVault = ({ onAutofill }: { onAutofill?: () => void }) => {
 
   useEffect(() => {
     fetchSnippets().finally(() => setLoading(false));
-  }, []);
+  }, [fetchSnippets]);
 
   const categories = useMemo(() => {
     const cats = new Set(snippets.map(s => s.category || 'General'));
