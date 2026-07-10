@@ -225,29 +225,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   }
 });
 
-async function ensureActiveTabPermission(): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if (typeof chrome === 'undefined' || !chrome.permissions) {
-      resolve();
-      return;
-    }
-    chrome.permissions.contains({ permissions: ['activeTab'] }, (hasIt) => {
-      if (hasIt) {
-        resolve();
-      } else {
-        chrome.permissions.request({ permissions: ['activeTab'] }, (granted) => {
-          if (chrome.runtime.lastError) {
-            reject(new Error(chrome.runtime.lastError.message));
-          } else if (granted) {
-            resolve();
-          } else {
-            reject(new Error('Permission denied'));
-          }
-        });
-      }
-    });
-  });
-}
+
 
 function getActiveTabWithTimeout(timeoutMs = 2000): Promise<chrome.tabs.Tab> {
   return new Promise((resolve, reject) => {
@@ -285,13 +263,7 @@ async function handleSaveJob(tab: chrome.tabs.Tab, urlOverride?: string) {
   };
 
   try {
-    // 1. Request activeTab permission explicitly
-    try {
-      await ensureActiveTabPermission();
-    } catch (e: any) {
-      showFeedback(targetTab.id, `Permission denied: ${e.message || 'Active tab access required'}`, true);
-      return;
-    }
+
 
     // 2. Retrieve URL with timeout
     if (!url) {
