@@ -308,8 +308,8 @@ export const ResumeBuilder = () => {
           </div>
         </div>
       ) : (
-        <div className="bg-red-500/5 border border-red-500/20 rounded-2xl p-3">
-          <p className="text-[10px] text-red-400 font-bold uppercase tracking-widest">⚠ Save your Profile first</p>
+        <div className="bg-coral-red/5 border border-coral-red/20 rounded-2xl p-3">
+          <p className="text-[10px] text-coral-red font-bold uppercase tracking-widest">⚠ Save your Profile first</p>
         </div>
       )}
 
@@ -348,14 +348,14 @@ export const ResumeBuilder = () => {
         ref={textareaRef}
         rows={8}
         placeholder={"[PROFESSIONAL SUMMARY]\nSenior Engineer with 5+ years...\n\n[TECHNICAL SKILLS]\nPLC: Siemens S7-1200/1500\n\n[PROFESSIONAL EXPERIENCE]\nCompany | Location | Title | Dec 2023 – Present\n- Developed automated systems..."}
-        className="w-full px-4 py-3 bg-carbon border border-graphite rounded-md text-xs text-white placeholder:text-fog focus:outline-none focus:border-accent/40 transition-all resize-none leading-relaxed"
+        className="w-full px-4 py-3 bg-carbon border border-graphite rounded-xl text-xs text-white placeholder:text-fog focus:outline-none focus:border-accent/40 transition-all resize-none leading-relaxed"
         value={resumeText}
         onChange={(e) => handleTextChange(e.target.value)}
       />
 
       {/* Dynamic Shortcuts Indicator */}
       {Object.keys(dynamicShortcuts).length > 0 && (
-        <div className="bg-accent/5 border border-accent/10 rounded-md p-3">
+        <div className="bg-accent/5 border border-accent/10 rounded-xl p-3">
           <p className="text-[9px] font-bold text-accent uppercase tracking-widest mb-2">Live Experience Shortcuts</p>
           <div className="flex flex-wrap gap-1.5">
             {Object.keys(dynamicShortcuts).map(key => (
@@ -374,8 +374,8 @@ export const ResumeBuilder = () => {
           {sections.map(s => (
             <span key={s.label} className={`text-[9px] font-bold px-3 py-1 rounded-full border ${
               s.found 
-                ? 'bg-green-500/10 text-green-400 border-green-500/20' 
-                : 'bg-red-500/5 text-red-400/60 border-red-500/10'
+                ? 'bg-pulse-green/10 text-pulse-green border-pulse-green/20' 
+                : 'bg-coral-red/5 text-coral-red/60 border-coral-red/10'
             }`}>
               {s.found ? '✓' : '○'} {s.label}
             </span>
@@ -391,7 +391,7 @@ export const ResumeBuilder = () => {
       {/* Download Buttons */}
       {hasContent && (
         <div className="grid grid-cols-2 gap-3">
-          <Button onClick={downloadPdf} icon={<FileText className="w-4 h-4" />} className="py-3 text-xs bg-red-600 hover:bg-red-700 border-red-600">
+          <Button onClick={downloadPdf} icon={<FileText className="w-4 h-4" />} className="py-3 text-xs bg-coral-red hover:bg-coral-red/90 border-coral-red text-white shadow-coral-red/25 shadow-lg">
             Download PDF
           </Button>
           <Button onClick={downloadDocx} isLoading={generating} icon={<Download className="w-4 h-4" />} className="py-3 text-xs">
@@ -467,7 +467,7 @@ const CompanyCopySection = ({ resumeText }: { resumeText: string }) => {
           onClick={() => copyCompany(i)}
           className={`w-full flex items-center justify-between p-3 rounded-xl border text-left text-xs font-bold transition-all ${
             copiedIdx === i
-              ? 'border-green-500/30 text-green-400 bg-green-500/5'
+              ? 'border-pulse-green/30 text-pulse-green bg-pulse-green/5'
               : 'border-white/5 text-white hover:border-accent/30 hover:bg-accent/5'
           }`}
         >

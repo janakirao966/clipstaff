@@ -6,7 +6,8 @@ import {
   Check,
   ChevronDown,
   Trash2,
-  ExternalLink
+  ExternalLink,
+  Database
 } from 'lucide-react';
 
 interface JobTableRowProps {
@@ -17,6 +18,8 @@ interface JobTableRowProps {
   onUpdateStatus: (url: string, status: Job['status']) => void;
   activeDropdown: string | null;
   setActiveDropdown: (id: string | null) => void;
+  isReadOnly?: boolean;
+  showProfileBadge?: boolean;
 }
 
 export const JobTableRow = ({
@@ -26,7 +29,9 @@ export const JobTableRow = ({
   onApply,
   onUpdateStatus,
   activeDropdown,
-  setActiveDropdown
+  setActiveDropdown,
+  isReadOnly = false,
+  showProfileBadge = false
 }: JobTableRowProps) => {
   const statusConfig = {
     not_applied: { 
@@ -49,22 +54,30 @@ export const JobTableRow = ({
   const config = statusConfig[job.status];
 
   return (
-    <div className="group p-4 bg-carbon border border-graphite rounded-md hover:border-smoke hover:bg-obsidian hover:-translate-y-0.5 duration-150 transition-all flex flex-col gap-3 relative overflow-hidden">
+    <div className="group p-4 bg-carbon border border-graphite rounded-xl hover:border-smoke hover:bg-obsidian hover:-translate-y-0.5 duration-150 transition-all flex flex-col gap-3 relative overflow-hidden">
       {/* Top Row: Job details */}
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
           <h4 className="text-xs font-semibold text-paper tracking-wide truncate">{job.role}</h4>
           <p className="text-[10px] font-medium text-ash mt-0.5 truncate">{job.company}</p>
-          {job.dateAdded && (
-            <span className="inline-block text-[8px] font-mono font-semibold text-fog uppercase tracking-widest mt-1">
-              Added: {job.dateAdded}
-            </span>
-          )}
+          <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 mt-1">
+            {job.dateAdded && (
+              <span className="text-[8px] font-mono font-semibold text-fog uppercase tracking-widest">
+                Added: {job.dateAdded}
+              </span>
+            )}
+            {showProfileBadge && (job as any).profileName && (
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-accent/15 border border-accent/25 rounded-md text-[8px] font-black uppercase tracking-wider text-accent">
+                <Database className="w-2.5 h-2.5 text-accent" />
+                {(job as any).profileName}
+              </span>
+            )}
+          </div>
         </div>
 
         <div className="flex items-center gap-1">
-          {/* Delete button (only in Local database view) */}
-          {viewMode === 'local' && (
+          {/* Delete button (only in Local database view and not read-only) */}
+          {viewMode === 'local' && !isReadOnly && (
             <button
               onClick={(e) => {
                 e.stopPropagation();
@@ -113,50 +126,58 @@ export const JobTableRow = ({
       <div className="flex items-center justify-between border-t border-graphite pt-2.5 relative">
         <span className="text-[9px] font-bold uppercase tracking-wider text-ash">Status:</span>
 
-        {/* Dropdown status toggler */}
-        <div className="relative">
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              setActiveDropdown(activeDropdown === job.id ? null : job.id);
-            }}
-            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-md text-[9px] font-bold uppercase tracking-wider border active:scale-95 duration-150 transition-all ${config.color}`}
-          >
+        {isReadOnly ? (
+          /* Static Badge in Read-Only Mode */
+          <div className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-md text-[9px] font-bold uppercase tracking-wider border ${config.color.replace('hover:bg-white/10', '').replace('hover:bg-pulse-green/20', '').replace('hover:bg-coral-red/20', '')}`}>
             {config.icon}
             <span>{config.label}</span>
-            <ChevronDown className="w-2.5 h-2.5 opacity-60" />
-          </button>
-
-          {activeDropdown === job.id && (
-            <div 
-              className="absolute right-0 bottom-full mb-1 w-28 bg-[#0D0D0D] border border-white/10 rounded-xl shadow-premium z-50 py-1 overflow-hidden"
-              onClick={(e) => e.stopPropagation()}
+          </div>
+        ) : (
+          /* Dropdown status toggler */
+          <div className="relative">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setActiveDropdown(activeDropdown === job.id ? null : job.id);
+              }}
+              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-md text-[9px] font-bold uppercase tracking-wider border active:scale-95 duration-150 transition-all ${config.color}`}
             >
-              {(['not_applied', 'applied', 'skipped'] as const).map((status) => {
-                const optionLabel = {
-                  not_applied: 'To Apply',
-                  applied: 'Applied',
-                  skipped: 'Skipped'
-                }[status];
+              {config.icon}
+              <span>{config.label}</span>
+              <ChevronDown className="w-2.5 h-2.5 opacity-60" />
+            </button>
 
-                return (
-                  <button
-                    key={status}
-                    onClick={() => {
-                      onUpdateStatus(job.url, status);
-                      setActiveDropdown(null);
-                    }}
-                    className={`w-full text-left px-3.5 py-2 text-[9px] font-semibold uppercase tracking-wider hover:bg-white/5 transition-colors ${
-                      job.status === status ? 'text-accent' : 'text-ash hover:text-mist'
-                    }`}
-                  >
-                    {optionLabel}
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </div>
+            {activeDropdown === job.id && (
+              <div 
+                className="absolute right-0 bottom-full mb-1 w-28 bg-[#0D0D0D] border border-white/10 rounded-xl shadow-premium z-50 py-1 overflow-hidden"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {(['not_applied', 'applied', 'skipped'] as const).map((status) => {
+                  const optionLabel = {
+                    not_applied: 'To Apply',
+                    applied: 'Applied',
+                    skipped: 'Skipped'
+                  }[status];
+
+                  return (
+                    <button
+                      key={status}
+                      onClick={() => {
+                        onUpdateStatus(job.url, status);
+                        setActiveDropdown(null);
+                      }}
+                      className={`w-full text-left px-3.5 py-2 text-[9px] font-semibold uppercase tracking-wider hover:bg-white/5 transition-colors ${
+                        job.status === status ? 'text-accent' : 'text-ash hover:text-mist'
+                      }`}
+                    >
+                      {optionLabel}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

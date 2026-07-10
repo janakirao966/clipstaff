@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage, StateStorage } from 'zustand/middleware';
-import { Profile, Snippet, Job } from '../types';
+import { Profile, Snippet, Job, SheetTab } from '../types';
 
 interface ProfileSlice {
   profiles: Profile[];
@@ -31,9 +31,15 @@ interface SnippetSlice {
 
 interface JobSlice {
   spreadsheetUrl: string;
+  googleWebAppUrl: string;
   jobs: Job[];
+  sheetTabs: SheetTab[];
+  selectedSheetIdx: number;
   setSpreadsheetUrl: (url: string) => void;
+  setGoogleWebAppUrl: (url: string) => void;
   setJobs: (jobs: Job[]) => void;
+  setSheetTabs: (tabs: SheetTab[]) => void;
+  setSelectedSheetIdx: (idx: number) => void;
   updateJobStatus: (url: string, status: Job['status']) => void;
 }
 
@@ -138,12 +144,23 @@ export const useStore = create<ProfileSlice & SnippetSlice & JobSlice & Eligibil
 
       // Job Slice
       spreadsheetUrl: 'https://docs.google.com/spreadsheets/d/1zhdK9LJ8z0RLZmRv7TqirPTUuFAcfy9ENigLYnNTLsA/edit?usp=sharing',
+      googleWebAppUrl: '',
       jobs: [],
+      sheetTabs: [],
+      selectedSheetIdx: 0,
       setSpreadsheetUrl: (spreadsheetUrl) => set({ spreadsheetUrl }),
+      setGoogleWebAppUrl: (googleWebAppUrl) => set({ googleWebAppUrl }),
       setJobs: (jobs) => set({ jobs }),
-      updateJobStatus: (url, status) => set((state) => ({
-        jobs: state.jobs.map((job) => job.url === url ? { ...job, status } : job)
-      })),
+      setSheetTabs: (sheetTabs) => set({ sheetTabs }),
+      setSelectedSheetIdx: (selectedSheetIdx) => set({ selectedSheetIdx }),
+      updateJobStatus: (url, status) => set((state) => {
+        const updatedJobs = state.jobs.map((job) => job.url === url ? { ...job, status } : job);
+        const updatedTabs = state.sheetTabs.map((tab) => ({
+          ...tab,
+          jobs: tab.jobs.map((job) => job.url === url ? { ...job, status } : job)
+        }));
+        return { jobs: updatedJobs, sheetTabs: updatedTabs };
+      }),
 
       // Eligibility Slice
       geminiApiKey: '',
@@ -178,7 +195,10 @@ export const useStore = create<ProfileSlice & SnippetSlice & JobSlice & Eligibil
         resumeText: '',
         searchTerm: '',
         spreadsheetUrl: 'https://docs.google.com/spreadsheets/d/1zhdK9LJ8z0RLZmRv7TqirPTUuFAcfy9ENigLYnNTLsA/edit?usp=sharing',
+        googleWebAppUrl: '',
         jobs: [],
+        sheetTabs: [],
+        selectedSheetIdx: 0,
         geminiApiKey: '',
         checkerJdText: '',
         lastEligibilityResult: null,
@@ -209,7 +229,10 @@ export const useStore = create<ProfileSlice & SnippetSlice & JobSlice & Eligibil
         searchTerm: state.searchTerm,
         profileTriggers: state.profileTriggers,
         spreadsheetUrl: state.spreadsheetUrl,
+        googleWebAppUrl: state.googleWebAppUrl,
         jobs: state.jobs,
+        sheetTabs: state.sheetTabs,
+        selectedSheetIdx: state.selectedSheetIdx,
         geminiApiKey: state.geminiApiKey,
         checkerJdText: state.checkerJdText,
         lastEligibilityResult: state.lastEligibilityResult

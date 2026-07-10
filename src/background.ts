@@ -78,6 +78,56 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       });
     return true; // Keep message channel open for async response
   }
+
+  if (message.type === 'FETCH_SPREADSHEET_BINARY') {
+    fetch(message.url)
+      .then(res => {
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+        }
+        return res.arrayBuffer();
+      })
+      .then(buffer => {
+        const bytes = new Uint8Array(buffer);
+        let binary = '';
+        const chunkSize = 8192;
+        for (let i = 0; i < bytes.length; i += chunkSize) {
+          const chunk = bytes.subarray(i, Math.min(i + chunkSize, bytes.length));
+          binary += String.fromCharCode(...chunk);
+        }
+        sendResponse({ success: true, data: btoa(binary) });
+      })
+      .catch(err => {
+        console.error('Background binary fetch failed:', err);
+        sendResponse({ success: false, error: err.message || err.toString() });
+      });
+    return true;
+  }
+
+  if (message.type === 'POST_API') {
+    fetch(message.url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(message.body),
+      redirect: 'follow'
+    })
+      .then(res => {
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+        }
+        return res.json();
+      })
+      .then(json => {
+        sendResponse({ success: true, data: json });
+      })
+      .catch(err => {
+        console.error('Background POST failed:', err);
+        sendResponse({ success: false, error: err.message || err.toString() });
+      });
+    return true; // Keep message channel open for async response
+  }
 });
 
 async function handleSaveJob(tab: chrome.tabs.Tab) {

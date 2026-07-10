@@ -68,3 +68,19 @@ export interface Job {
   dateAdded?: string;
   status: 'not_applied' | 'applied' | 'skipped';
 }
+
+export interface VaultJob {
+  id: string;
+  profileName: string;
+  company: string;
+  role: string;
+  url: string;
+  status: 'not_applied' | 'applied' | 'skipped';
+  dateAdded?: string;
+}
+
+export interface SheetTab {
+  name: string;
+  jobs: Job[];
+}
+

@@ -20,8 +20,8 @@
   "commands": {
     "save-current-job": {
       "suggested_key": {
-        "default": "Alt+Shift+J",
-        "mac": "Alt+Shift+J"
+        "default": "Ctrl+Shift+X",
+        "mac": "Command+Shift+X"
       },
       "description": "Save current job application URL to ClipStaff"
     }
@@ -53,7 +53,7 @@
     }
   ],
   "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' https://*.supabase.co https://docs.google.com https://*.googleusercontent.com https://generativelanguage.googleapis.com;"
+    "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'self' https://*.supabase.co https://docs.google.com https://script.google.com https://*.googleusercontent.com https://generativelanguage.googleapis.com;"
   },
   "web_accessible_resources": [
     {

@@ -122,8 +122,8 @@ export const Auth = () => {
           </div>
 
           {error && (
-            <div className="p-3 bg-red-500/5 border border-red-500/10 rounded-md">
-              <p className="text-[10px] font-medium text-red-400 text-center uppercase tracking-wide">{error}</p>
+            <div className="p-3 bg-coral-red/5 border border-coral-red/10 rounded-xl">
+              <p className="text-[10px] font-medium text-coral-red text-center uppercase tracking-wide">{error}</p>
             </div>
           )}
 

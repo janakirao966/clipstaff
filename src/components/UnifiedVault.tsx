@@ -15,7 +15,7 @@ import {
   Sparkles
 } from 'lucide-react';
 import { SnippetDetail } from './SnippetDetail';
-import { handleShortcutClick, copyToClipboard } from '../lib/clipboard';
+import { handleShortcutClick } from '../lib/clipboard';
 import { Button } from './ui';
 import { Modal } from './ui/Modal';
 import { toast } from 'sonner';
@@ -33,8 +33,17 @@ export const UnifiedVault = ({ onAutofill }: { onAutofill?: () => void }) => {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [editingProfileItem, setEditingProfileItem] = useState<any>(null);
   const [profileEditValue, setProfileEditValue] = useState('');
+  const [copiedShortcut, setCopiedShortcut] = useState<string | null>(null);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleShortcutClickLocal = async (text: string | null | undefined, shortcut: string) => {
+    if (!text) return;
+    await handleShortcutClick(text, shortcut);
+    setCopiedShortcut(shortcut);
+    setTimeout(() => setCopiedShortcut(null), 1500);
+  };
+
 
   const handleImportJSON = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -124,7 +133,17 @@ export const UnifiedVault = ({ onAutofill }: { onAutofill?: () => void }) => {
           });
         }
 
-        if (items.length === 0) {
+        // De-duplicate items inside the imported list (case-insensitive), keeping the latest one
+        const uniqueItemsMap = new Map<string, { shortcut: string; text: string; category?: string }>();
+        for (const item of items) {
+          const normalized = item.shortcut.trim().toLowerCase();
+          if (normalized) {
+            uniqueItemsMap.set(normalized, item);
+          }
+        }
+        const uniqueItems = Array.from(uniqueItemsMap.values());
+
+        if (uniqueItems.length === 0) {
           toast.error('Invalid JSON Format', {
             description: 'Provide an array of shortcut objects or a key-value object.'
           });
@@ -132,16 +151,30 @@ export const UnifiedVault = ({ onAutofill }: { onAutofill?: () => void }) => {
         }
 
         let importCount = 0;
-        const loadingToast = toast.loading(`Importing ${items.length} shortcuts...`);
+        let updateCount = 0;
+        const loadingToast = toast.loading(`Importing ${uniqueItems.length} shortcuts...`);
 
-        for (const item of items) {
+        for (const item of uniqueItems) {
           try {
-            await createSnippet({
-              shortcut: item.shortcut,
-              text: item.text,
-              category: item.category || 'General'
-            });
-            importCount++;
+            const normalizedShortcut = item.shortcut.trim().toLowerCase();
+            const existing = snippets.find(
+              (s) => s.shortcut.trim().toLowerCase() === normalizedShortcut
+            );
+
+            if (existing) {
+              await updateSnippet(existing.id, {
+                text: item.text,
+                category: item.category || existing.category || 'General'
+              });
+              updateCount++;
+            } else {
+              await createSnippet({
+                shortcut: normalizedShortcut,
+                text: item.text,
+                category: item.category || 'General'
+              });
+              importCount++;
+            }
           } catch (err) {
             console.error('Failed to import shortcut:', item.shortcut, err);
           }
@@ -149,7 +182,7 @@ export const UnifiedVault = ({ onAutofill }: { onAutofill?: () => void }) => {
 
         toast.dismiss(loadingToast);
         toast.success('Import Complete', {
-          description: `Successfully imported ${importCount} of ${items.length} shortcuts.`
+          description: `Successfully imported ${importCount} new and updated ${updateCount} existing shortcuts.`
         });
         
         if (fileInputRef.current) fileInputRef.current.value = '';
@@ -308,6 +341,74 @@ export const UnifiedVault = ({ onAutofill }: { onAutofill?: () => void }) => {
     );
   }, [profileShortcutsList, searchTerm]);
 
+  const duplicates = useMemo(() => {
+    const seen = new Set<string>();
+    const dupes: any[] = [];
+    
+    // Add all active profile shortcut triggers to the "seen" list first.
+    profileShortcutsList.forEach(ps => {
+      seen.add(ps.shortcut.trim().toLowerCase());
+    });
+
+    // Any manual snippet that matches a profile shortcut trigger OR is a duplicate of another manual snippet is marked as a duplicate
+    snippets.forEach(s => {
+      const norm = s.shortcut.trim().toLowerCase();
+      if (seen.has(norm)) {
+        dupes.push(s);
+      } else {
+        seen.add(norm);
+      }
+    });
+    return dupes;
+  }, [snippets, profileShortcutsList]);
+
+  const handleDeduplicate = async () => {
+    const loadingToast = toast.loading('Cleaning up duplicate shortcuts...');
+    try {
+      const seen = new Set<string>();
+      const toDelete: string[] = [];
+
+      // Add profile shortcut triggers to seen
+      profileShortcutsList.forEach(ps => {
+        seen.add(ps.shortcut.trim().toLowerCase());
+      });
+
+      // Sort snippets newest first to keep the newest manually created version (or delete it if it conflicts with profile shortcuts)
+      const sorted = [...snippets].sort((a, b) => 
+        new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
+      );
+
+      for (const s of sorted) {
+        const norm = s.shortcut.trim().toLowerCase();
+        if (seen.has(norm)) {
+          toDelete.push(s.id);
+        } else {
+          seen.add(norm);
+        }
+      }
+
+      if (toDelete.length === 0) {
+        toast.dismiss(loadingToast);
+        toast.success('No duplicates found');
+        return;
+      }
+
+      for (const id of toDelete) {
+        await deleteSnippet(id);
+      }
+
+      toast.dismiss(loadingToast);
+      toast.success('Clean Up Complete', {
+        description: `Successfully removed ${toDelete.length} duplicate/redundant shortcut(s) from your vault.`
+      });
+    } catch (err: any) {
+      toast.dismiss(loadingToast);
+      toast.error('Clean Up Failed', {
+        description: err.message || 'An error occurred during deduplication.'
+      });
+    }
+  };
+
   const handleTogglePin = async (item: any) => {
     const isCurrentlyPinned = !!item.is_pinned;
     if (!isCurrentlyPinned) {
@@ -406,12 +507,35 @@ export const UnifiedVault = ({ onAutofill }: { onAutofill?: () => void }) => {
           <input
             type="text"
             placeholder="Search your custom shortcuts..."
-            className="w-full pl-12 pr-4 py-2.5 bg-carbon border border-graphite rounded-md text-xs text-mist placeholder:text-fog focus:outline-none focus:border-bone transition-all"
+            className="w-full pl-12 pr-4 py-2.5 bg-carbon border border-graphite rounded-xl text-xs text-mist placeholder:text-fog focus:outline-none focus:border-bone transition-all"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
       </div>
+
+      {/* Duplicate warning banner */}
+      {duplicates.length > 0 && (
+        <div className="p-3 bg-coral-red/5 border border-coral-red/20 rounded-xl flex items-center justify-between gap-3 text-xs text-mist animate-in fade-in slide-in-from-top-2 duration-300">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 bg-coral-red/10 rounded-lg flex items-center justify-center border border-coral-red/20">
+              <span className="text-coral-red font-bold">!</span>
+            </div>
+            <div>
+              <p className="font-semibold text-white text-[11px]">Duplicate Shortcuts Found</p>
+              <p className="text-[10px] text-ash">You have {duplicates.length} duplicate shortcut trigger(s).</p>
+            </div>
+          </div>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={handleDeduplicate}
+            className="text-[9px] font-bold border border-coral-red/30 text-coral-red hover:bg-coral-red/15 hover:border-coral-red/50 animate-pulse hover:animate-none"
+          >
+            Clean Up
+          </Button>
+        </div>
+      )}
 
       {/* Profile Shortcuts (If active) */}
       {filteredProfileShortcuts.length > 0 && (
@@ -423,8 +547,12 @@ export const UnifiedVault = ({ onAutofill }: { onAutofill?: () => void }) => {
             {filteredProfileShortcuts.map((item) => (
               <div
                 key={item.id}
-                className="group p-4 bg-carbon border border-graphite rounded-md hover:border-smoke hover:bg-obsidian transition-all cursor-pointer relative overflow-hidden"
-                onClick={() => handleShortcutClick(item.text, item.shortcut)}
+                className={`group p-4 bg-carbon border transition-all cursor-pointer relative overflow-hidden rounded-xl ${
+                  copiedShortcut === item.shortcut
+                    ? 'border-accent/40 bg-accent/[0.02] shadow-[0_0_15px_rgba(228,242,34,0.15)]'
+                    : 'border-graphite hover:border-smoke hover:bg-obsidian'
+                }`}
+                onClick={() => handleShortcutClickLocal(item.text, item.shortcut)}
               >
                 <div className="flex items-center justify-between relative z-10">
                   <div className="flex items-center gap-4 min-w-0 flex-1">
@@ -447,7 +575,7 @@ export const UnifiedVault = ({ onAutofill }: { onAutofill?: () => void }) => {
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        copyToClipboard(item.text, item.shortcut);
+                        handleShortcutClickLocal(item.text, item.shortcut);
                       }}
                       className="p-2 text-muted hover:text-accent-light transition-all"
                       title="Copy to clipboard"
@@ -488,8 +616,12 @@ export const UnifiedVault = ({ onAutofill }: { onAutofill?: () => void }) => {
           filteredAndSorted.map((item: any) => (
             <div
               key={item.id}
-              className="group p-4 bg-carbon border border-graphite rounded-md hover:border-smoke hover:bg-obsidian transition-all cursor-pointer relative overflow-hidden"
-              onClick={() => handleShortcutClick(item.text, item.shortcut)}
+              className={`group p-4 bg-carbon border transition-all cursor-pointer relative overflow-hidden rounded-xl ${
+                copiedShortcut === item.shortcut
+                  ? 'border-accent/40 bg-accent/[0.02] shadow-[0_0_15px_rgba(228,242,34,0.15)]'
+                  : 'border-graphite hover:border-smoke hover:bg-obsidian'
+              }`}
+              onClick={() => handleShortcutClickLocal(item.text, item.shortcut)}
             >
               <div className="flex items-center justify-between relative z-10">
                 <div className="flex items-center gap-4 min-w-0 flex-1">
@@ -529,7 +661,7 @@ export const UnifiedVault = ({ onAutofill }: { onAutofill?: () => void }) => {
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        copyToClipboard(item.text, item.shortcut);
+                        handleShortcutClickLocal(item.text, item.shortcut);
                       }}
                       className="p-2 text-muted hover:text-accent-light transition-all"
                       title="Copy to clipboard"
@@ -551,7 +683,7 @@ export const UnifiedVault = ({ onAutofill }: { onAutofill?: () => void }) => {
                         e.stopPropagation();
                         setDeletingId(item.id);
                       }}
-                      className="p-2 text-muted hover:text-red-400"
+                      className="p-2 text-muted hover:text-coral-red"
                       title="Delete shortcut"
                     >
                       <Trash2 className="w-3.5 h-3.5" />

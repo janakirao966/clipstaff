@@ -23,7 +23,7 @@ export const JobFilters = ({
         <input
           type="text"
           placeholder={`Search ${viewMode === 'local' ? 'saved' : 'synced'} jobs by role or company...`}
-          className="w-full pl-12 pr-4 py-2.5 bg-carbon border border-graphite rounded-md text-xs text-mist placeholder:text-fog focus:outline-none focus:border-bone transition-all"
+          className="w-full pl-12 pr-4 py-2.5 bg-carbon border border-graphite rounded-xl text-xs text-mist placeholder:text-fog focus:outline-none focus:border-bone transition-all"
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
         />
@@ -48,7 +48,7 @@ export const JobFilters = ({
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
-              className={`flex-1 py-1.5 border rounded-md text-[9px] font-bold uppercase tracking-wider transition-all text-center ${colors[tab]}`}
+              className={`flex-1 py-1.5 border rounded-xl text-[9px] font-bold uppercase tracking-wider transition-all text-center ${colors[tab]}`}
             >
               {labels[tab]}
             </button>

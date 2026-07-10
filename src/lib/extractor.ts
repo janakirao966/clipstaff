@@ -140,15 +140,25 @@ export function isValidJobUrl(urlStr: string): boolean {
     const url = new URL(urlStr);
     
     // Block internal Chrome or extension schemes
-    if (['chrome:', 'chrome-extension:', 'about:', 'file:'].includes(url.protocol)) {
+    if (['chrome:', 'chrome-extension:', 'about:', 'file:', 'edge:'].includes(url.protocol)) {
       return false;
     }
 
     const host = url.hostname.toLowerCase();
     const path = url.pathname.toLowerCase();
 
-    // Block Google Workspace documents
-    if (host.includes('docs.google.com') || host.includes('drive.google.com')) {
+    // Block Google Workspace documents, mail, and meet
+    if (
+      host.includes('docs.google.com') || 
+      host.includes('drive.google.com') ||
+      host.includes('mail.google.com') ||
+      host.includes('meet.google.com')
+    ) {
+      return false;
+    }
+
+    // Block Zoom and Microsoft Teams
+    if (host.includes('zoom.us') || host.includes('teams.microsoft.com') || host.includes('teams.live.com')) {
       return false;
     }
 
@@ -169,17 +179,24 @@ export function isValidJobUrl(urlStr: string): boolean {
       return false;
     }
 
-    // Block other generic non-job portals
+    // Block other generic non-job portals and chat apps
     const blockedHosts = [
       'gmail.com',
       'outlook.live.com',
+      'outlook.office.com',
       'youtube.com',
       'facebook.com',
       'twitter.com',
       'x.com',
       'instagram.com',
       'netflix.com',
-      'spotify.com'
+      'spotify.com',
+      'whatsapp.com',
+      'web.whatsapp.com',
+      'slack.com',
+      'discord.com',
+      'telegram.org',
+      't.me'
     ];
     if (blockedHosts.some(h => host === h || host.endsWith('.' + h))) {
       return false;

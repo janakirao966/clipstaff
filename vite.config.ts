@@ -14,6 +14,17 @@ export default defineConfig({
       '@': path.resolve(__dirname, './src'),
     },
   },
+  build: {
+    chunkSizeWarningLimit: 1000,
+    rollupOptions: {
+      onwarn(warning, warn) {
+        if (warning.message && warning.message.includes('overwrites a previously emitted file')) {
+          return;
+        }
+        warn(warning);
+      }
+    }
+  },
   test: {
     globals: true,
     environment: 'jsdom',

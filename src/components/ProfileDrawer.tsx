@@ -445,7 +445,7 @@ export const ProfileDrawer = ({ isOpen, onClose }: ProfileDrawerProps) => {
                         <button type="button" onClick={() => {
                           const n = [...formData.experience]; n.splice(index, 1);
                           setFormData({ ...formData, experience: n });
-                        }} className="p-2 text-muted hover:text-red-400"><Trash2 className="w-4 h-4" /></button>
+                        }} className="p-2 text-muted hover:text-coral-red"><Trash2 className="w-4 h-4" /></button>
                       </div>
                       <p className="text-[9px] font-black text-accent uppercase tracking-widest">Experience #{index + 1}</p>
                       <InputField label="Company Name" value={exp.company} onChange={(v:any) => updateExperience(index, 'company', v)} icon={Briefcase} />
@@ -483,7 +483,7 @@ export const ProfileDrawer = ({ isOpen, onClose }: ProfileDrawerProps) => {
                         <button type="button" onClick={() => {
                           const n = [...formData.education]; n.splice(index, 1);
                           setFormData({ ...formData, education: n });
-                        }} className="p-2 text-muted hover:text-red-400"><Trash2 className="w-4 h-4" /></button>
+                        }} className="p-2 text-muted hover:text-coral-red"><Trash2 className="w-4 h-4" /></button>
                       </div>
                       <InputField label="University Name" value={edu.school} onChange={(v:any) => updateEducation(index, 'school', v)} icon={GraduationCap} />
                       <div className="grid grid-cols-2 gap-4">

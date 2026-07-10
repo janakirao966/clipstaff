@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useCallback } from 'react';
+import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { useStore } from '../store/useStore';
 import { Job } from '../types';
 import { Button } from './ui';
@@ -7,15 +7,50 @@ import { Briefcase } from 'lucide-react';
 import { toast } from 'sonner';
 import { useJobsDb } from '../hooks/useJobsDb';
 import { clearAllJobs } from '../lib/db';
-import { extractCompanyFromUrl, extractRoleFromUrl, getJobId } from '../lib/extractor';
-import { parseCSV, getSpreadsheetExportUrl, exportToCSV } from '../lib/csvHelper';
+import { isValidJobUrl, extractCompanyFromUrl, extractRoleFromUrl, getJobId } from '../lib/extractor';
+import { getSpreadsheetExportUrl, getSpreadsheetXlsxExportUrl, exportToExcel, worksheetToRows, parseRowsToJobs, parseCSV } from '../lib/csvHelper';
 import { JobTableRow } from './jobs/JobTableRow';
 import { JobFilters } from './jobs/JobFilters';
 import { CsvSyncSection } from './jobs/CsvSyncSection';
 
+interface SheetTab {
+  name: string;
+  jobs: Job[];
+}
+
+// Helper: fetch a URL via background script
+const fetchViaBackground = (
+  url: string,
+  binary: boolean = false
+): Promise<{ success: boolean; data?: string; error?: string }> => {
+  return new Promise((resolve) => {
+    chrome.runtime.sendMessage(
+      { type: binary ? 'FETCH_SPREADSHEET_BINARY' : 'FETCH_SPREADSHEET', url },
+      (response) => {
+        if (chrome.runtime.lastError) {
+          resolve({ success: false, error: chrome.runtime.lastError.message });
+        } else {
+          resolve(response || { success: false, error: 'Empty background response.' });
+        }
+      }
+    );
+  });
+};
+
 export const JobList = () => {
-  const { spreadsheetUrl, setSpreadsheetUrl, jobs, setJobs, updateJobStatus } = useStore();
+  const { spreadsheetUrl, setSpreadsheetUrl, googleWebAppUrl, setGoogleWebAppUrl, jobs, setJobs, updateJobStatus, activeProfile, sheetTabs, setSheetTabs, selectedSheetIdx, setSelectedSheetIdx } = useStore();
   const localDb = useJobsDb();
+
+  const {
+    jobs: localJobs,
+    vaultProfiles,
+    selectedVaultProfile,
+    setSelectedVaultProfile,
+    vaultJobs,
+    importUniversalVault,
+    exportMergeUniversal,
+    exportMergeGoogleSheet
+  } = localDb;
   
   const [viewMode, setViewMode] = useState<'sheet' | 'local'>('local');
   const [urlInput, setUrlInput] = useState(spreadsheetUrl);
@@ -33,10 +68,40 @@ export const JobList = () => {
   const [roleInput, setRoleInput] = useState('');
   const [jobUrlInput, setJobUrlInput] = useState('');
 
+  // Pagination page size state
+  const [pageSize, setPageSize] = useState(50);
+  const autoSyncedRef = useRef(false);
+
+
+
+  // Reset pagination when filter tabs or selected vault profiles change
+  useEffect(() => {
+    setPageSize(50);
+  }, [activeTab, selectedVaultProfile]);
+
   // Sync state if store updates from options
   useEffect(() => {
     setUrlInput(spreadsheetUrl);
   }, [spreadsheetUrl]);
+
+  // Prevent viewing the current profile's data as a vault tab
+  useEffect(() => {
+    if (selectedVaultProfile && activeProfile?.full_name) {
+      const activeSanitized = activeProfile.full_name
+        .replace(/[\\\/?:*\[\]]/g, '_')
+        .slice(0, 31)
+        .trim()
+        .toLowerCase();
+      const selectedSanitized = selectedVaultProfile
+        .replace(/[\\\/?:*\[\]]/g, '_')
+        .slice(0, 31)
+        .trim()
+        .toLowerCase();
+      if (activeSanitized === selectedSanitized) {
+        setSelectedVaultProfile('');
+      }
+    }
+  }, [selectedVaultProfile, activeProfile, setSelectedVaultProfile]);
 
   // Listen for window focus/visibility change to prompt confirmation when user comes back
   useEffect(() => {
@@ -61,10 +126,10 @@ export const JobList = () => {
     };
   }, [pendingConfirmJob]);
 
-  // Fetch and Sync Job List from Google Sheet
-  const handleSyncJobs = useCallback(async () => {
-    const exportUrl = getSpreadsheetExportUrl(urlInput);
-    if (!exportUrl) {
+  // Fetch and Sync Job List from Spreadsheet (supports multi-sheet XLSX)
+  const syncJobs = useCallback(async (targetUrl: string) => {
+    const xlsxUrl = getSpreadsheetXlsxExportUrl(targetUrl);
+    if (!xlsxUrl) {
       toast.error('Invalid URL', {
         description: 'Please provide a valid Google Sheets URL.'
       });
@@ -72,126 +137,136 @@ export const JobList = () => {
     }
 
     setFetching(true);
-    const loadingToast = toast.loading('Syncing job links from spreadsheet...');
+    const loadingToast = toast.loading('Fetching spreadsheet...');
+    setSpreadsheetUrl(targetUrl);
 
     try {
-      // Save the sheet URL in the store
-      setSpreadsheetUrl(urlInput);
+      // Try XLSX export first (gets all sheets at once)
+      const xlsxResponse = await fetchViaBackground(xlsxUrl, true);
 
-      // Perform fetch via background script to bypass webpage CSP/CORS
-      const response = await new Promise<{ success: boolean; data?: string; error?: string }>((resolve) => {
-        chrome.runtime.sendMessage(
-          { type: 'FETCH_SPREADSHEET', url: exportUrl },
-          (response) => {
-            if (chrome.runtime.lastError) {
-              resolve({ success: false, error: chrome.runtime.lastError.message });
-            } else {
-              resolve(response || { success: false, error: 'Empty background response.' });
-            }
-          }
+      if (xlsxResponse.success && xlsxResponse.data) {
+        // Decode base64 to ArrayBuffer
+        const binaryString = atob(xlsxResponse.data);
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
+        }
+
+        // Parse XLSX with ExcelJS
+        const ExcelJS = await import('exceljs');
+        const workbook = new ExcelJS.Workbook();
+        await workbook.xlsx.load(bytes.buffer);
+
+        // Get visible worksheets (skip hidden/meta sheets)
+        const validSheets = workbook.worksheets.filter(
+          (s: any) => s.state !== 'hidden' && s.name !== '__meta__'
         );
-      });
 
-      if (!response.success) {
-        throw new Error(response.error || 'Failed to fetch spreadsheet from background.');
-      }
+        if (validSheets.length === 0) {
+          throw new Error('Spreadsheet has no visible worksheets.');
+        }
 
-      const csvText = response.data || '';
-      const rows = parseCSV(csvText);
+        const currentJobs = useStore.getState().jobs;
 
-      if (rows.length === 0) {
-        throw new Error('Spreadsheet is empty.');
-      }
+        if (validSheets.length === 1) {
+          // Single sheet — existing behavior
+          setSheetTabs([]);
+          setSelectedSheetIdx(0);
+          const rows = worksheetToRows(validSheets[0]);
+          const parsedJobs = parseRowsToJobs(rows, currentJobs);
+          setJobs(parsedJobs);
+          toast.dismiss(loadingToast);
+          toast.success('Refresh Complete', {
+            description: `Loaded ${parsedJobs.length} job application links.`
+          });
+        } else {
+          // Multiple sheets — multi-tab mode
+          const tabs: SheetTab[] = validSheets.map((sheet: any) => {
+            const rows = worksheetToRows(sheet);
+            const sheetJobs = parseRowsToJobs(rows);
+            return { name: sheet.name, jobs: sheetJobs };
+          });
 
-      const headers = rows[0].map(h => h.toLowerCase().trim());
-      
-      // Dynamic Column Detection
-      let urlIdx = headers.findIndex(h => h.includes('link') || h.includes('url') || h.includes('apply') || h.includes('website') || h.includes('href'));
-      const companyIdx = headers.findIndex((h, idx) => idx !== urlIdx && (h.includes('company') || h.includes('employer') || h.includes('org') || h.includes('firm') || h.includes('name')));
-      const roleIdx = headers.findIndex((h, idx) => idx !== urlIdx && idx !== companyIdx && (h.includes('role') || h.includes('title') || h.includes('job') || h.includes('position') || h.includes('vacancy') || h.includes('designation')));
-      const dateIdx = headers.findIndex((h, idx) => idx !== urlIdx && idx !== companyIdx && idx !== roleIdx && (h.includes('date') || h.includes('added') || h.includes('posted') || h.includes('time') || h.includes('day')));
-
-      // Fallbacks if columns are not found
-      if (urlIdx === -1 && rows.length > 1) {
-        const firstDataRow = rows[1];
-        for (let col = 0; col < firstDataRow.length; col++) {
-          const val = firstDataRow[col] || '';
-          if (val.startsWith('http://') || val.startsWith('https://')) {
-            urlIdx = col;
-            break;
+          // Auto-select the user's own sheet if it matches activeProfile name
+          let defaultIdx = 0;
+          if (activeProfile?.full_name) {
+            const profileNameLower = activeProfile.full_name
+              .replace(/[\\\/?:*\[\]]/g, '_').slice(0, 31).trim().toLowerCase();
+            const matchIdx = tabs.findIndex(t => 
+              t.name.replace(/[\\\/?:*\[\]]/g, '_').slice(0, 31).trim().toLowerCase() === profileNameLower
+            );
+            if (matchIdx !== -1) defaultIdx = matchIdx;
           }
+
+          setSheetTabs(tabs);
+          setSelectedSheetIdx(defaultIdx);
+          setJobs(tabs[defaultIdx].jobs);
+          toast.dismiss(loadingToast);
+          toast.success('Refresh Complete', {
+            description: `Found ${tabs.length} profile sheets. Showing "${tabs[defaultIdx].name}" with ${tabs[defaultIdx].jobs.length} links.`
+          });
         }
-      }
+      } else {
+        // XLSX export failed — fallback to CSV (single sheet only)
+        console.warn('XLSX fetch failed, falling back to CSV:', xlsxResponse.error);
+        toast.warning('Multi-tab sync failed', {
+          description: `Could not fetch sheets structure (${xlsxResponse.error || 'unknown error'}). Falling back to single-sheet CSV.`
+        });
+        const csvExportUrl = getSpreadsheetExportUrl(targetUrl);
+        if (!csvExportUrl) throw new Error('Could not build export URL.');
 
-      if (urlIdx === -1) urlIdx = 0;
-
-      const parsedJobs: Job[] = [];
-
-      for (let i = 1; i < rows.length; i++) {
-        const row = rows[i];
-        if (!row || row.length === 0) continue;
-
-        const url = (row[urlIdx] || '').trim();
-        if (!url || (!url.startsWith('http') && !url.includes('.'))) continue;
-
-        let company = '';
-        if (companyIdx !== -1 && companyIdx !== urlIdx) {
-          company = (row[companyIdx] || '').trim();
-        }
-        if (!company || company.startsWith('http')) {
-          company = extractCompanyFromUrl(url);
-        }
-
-        let role = '';
-        if (roleIdx !== -1 && roleIdx !== urlIdx) {
-          role = (row[roleIdx] || '').trim();
-        }
-        if (!role || role === 'Job Opportunity') {
-          role = extractRoleFromUrl(url);
+        const csvResponse = await fetchViaBackground(csvExportUrl);
+        if (!csvResponse.success) {
+          throw new Error(csvResponse.error || 'Failed to fetch spreadsheet.');
         }
 
-        const dateAdded = dateIdx !== -1 && dateIdx !== urlIdx && dateIdx !== companyIdx && dateIdx !== roleIdx
-          ? (row[dateIdx] || '').trim() 
-          : undefined;
+        const csvText = csvResponse.data || '';
+        const rows = parseCSV(csvText);
+        if (rows.length === 0) throw new Error('Spreadsheet is empty.');
 
-        // Check if job already exists in our local store
-        const existingJob = jobs.find(j => j.url === url);
-        const status = existingJob ? existingJob.status : 'not_applied';
-        const id = existingJob ? existingJob.id : getJobId(url, i);
+        const currentJobs = useStore.getState().jobs;
+        const parsedJobs = parseRowsToJobs(rows, currentJobs);
 
-        parsedJobs.push({
-          id,
-          company,
-          role,
-          url,
-          dateAdded,
-          status
+        setSheetTabs([]);
+        setSelectedSheetIdx(0);
+        setJobs(parsedJobs);
+        toast.dismiss(loadingToast);
+        toast.success('Refresh Complete', {
+          description: `Loaded ${parsedJobs.length} job application links.`
         });
       }
 
-      setJobs(parsedJobs);
-      toast.dismiss(loadingToast);
-      toast.success('Sync Complete', {
-        description: `Successfully loaded ${parsedJobs.length} job application links.`
-      });
       setShowSettings(false);
     } catch (err: any) {
-      console.error('Spreadsheet sync error:', err);
+      console.error('Spreadsheet refresh error:', err);
       toast.dismiss(loadingToast);
-      toast.error('Sync Failed', {
+      toast.error('Refresh Failed', {
         description: err.message || 'Make sure the sheet is shared and anyone with the link can view.'
       });
     } finally {
       setFetching(false);
     }
-  }, [urlInput, setSpreadsheetUrl, jobs, setJobs]);
+  }, [setSpreadsheetUrl, setJobs, activeProfile]);
+
+  const handleSyncJobs = useCallback(() => {
+    syncJobs(urlInput);
+  }, [syncJobs, urlInput]);
+
+  // Handle switching sheet tabs
+  const handleSheetTabChange = useCallback((idx: number) => {
+    setSelectedSheetIdx(idx);
+    if (sheetTabs[idx]) {
+      setJobs(sheetTabs[idx].jobs);
+    }
+  }, [sheetTabs, setJobs]);
 
   // Auto-sync on first mount if we have a spreadsheet URL and no jobs
   useEffect(() => {
-    if (spreadsheetUrl && jobs.length === 0) {
-      handleSyncJobs();
+    if (spreadsheetUrl && jobs.length === 0 && !autoSyncedRef.current) {
+      autoSyncedRef.current = true;
+      syncJobs(spreadsheetUrl);
     }
-  }, [spreadsheetUrl, jobs.length, handleSyncJobs]);
+  }, [spreadsheetUrl, jobs.length, syncJobs]);
 
   // Handle clicking the Apply button
   const handleApply = (job: Job) => {
@@ -209,21 +284,47 @@ export const JobList = () => {
     }
   };
 
-  const handleConfirmApplied = (applied: boolean) => {
+  const handleConfirmApplied = async (applied: boolean) => {
     if (pendingConfirmJob) {
+      const isVaultJob = !!selectedVaultProfile;
+
       if (applied) {
-        if (viewMode === 'sheet') {
+        if (isVaultJob) {
+          // Copy vault job into local profile's database with status 'applied'
+          try {
+            await localDb.addJob(
+              pendingConfirmJob.url,
+              pendingConfirmJob.company,
+              pendingConfirmJob.role,
+              'applied'
+            );
+            toast.success('Applied & Saved!', {
+              description: `Saved to your local profile from ${selectedVaultProfile}'s vault.`
+            });
+          } catch (e: any) {
+            toast.error('Save Failed', { description: e.message || 'Could not save to local database.' });
+          }
+        } else if (viewMode === 'sheet') {
           updateJobStatus(pendingConfirmJob.url, 'applied');
+          toast.success('Applied!', {
+            description: `Status updated to Applied for ${pendingConfirmJob.company}.`
+          });
         } else {
           localDb.updateJobStatus(pendingConfirmJob.url, 'applied');
+          toast.success('Applied!', {
+            description: `Status updated to Applied for ${pendingConfirmJob.company}.`
+          });
         }
-        toast.success('Applied!', {
-          description: `Status updated to Applied for ${pendingConfirmJob.company}.`
-        });
       } else {
-        toast.info('Status Unchanged', {
-          description: `Kept status as To Apply for ${pendingConfirmJob.company}.`
-        });
+        if (isVaultJob) {
+          toast.info('Not Saved', {
+            description: `${pendingConfirmJob.company} was not added to your local profile.`
+          });
+        } else {
+          toast.info('Status Unchanged', {
+            description: `Kept status as To Apply for ${pendingConfirmJob.company}.`
+          });
+        }
       }
     }
     setShowConfirmModal(false);
@@ -231,40 +332,139 @@ export const JobList = () => {
   };
 
   const handleCaptureCurrentTab = async () => {
-    const tabInfo = await localDb.getActiveTabInfo();
-    if (tabInfo) {
-      const isJobUrl = (tabInfo.url && !['chrome:', 'chrome-extension:', 'about:', 'file:'].includes(new URL(tabInfo.url).protocol));
-      
-      setJobUrlInput(tabInfo.url);
-      setCompanyInput(extractCompanyFromUrl(tabInfo.url));
-      
-      const role = extractRoleFromUrl(tabInfo.url);
-      if (role === 'Job Opportunity' && tabInfo.title) {
-        let cleanTitle = tabInfo.title;
-        const delimiters = [' | ', ' - ', ' – ', ' at '];
-        for (const delim of delimiters) {
-          if (cleanTitle.includes(delim)) {
-            cleanTitle = cleanTitle.split(delim)[0];
-          }
-        }
-        setRoleInput(cleanTitle.trim());
-      } else {
-        setRoleInput(role);
-      }
-      setShowAddForm(true);
-
-      if (isJobUrl) {
-        toast.success('Captured Tab Details', {
-          description: 'Review details and click Save.'
-        });
-      } else {
-        toast.warning('Not a Job Page', {
-          description: 'This URL does not look like a standard job application, but you can still customize and save it.'
-        });
-      }
-    } else {
+    if (typeof chrome === 'undefined' || !chrome.tabs) {
       toast.error('Capture Failed', {
-        description: 'Could not detect active tab URL. Try opening a valid job page.'
+        description: 'Not in a Chrome Extension context.'
+      });
+      return;
+    }
+
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (!tab?.id || !tab.url) {
+        toast.error('Capture Failed', {
+          description: 'No active tab detected.'
+        });
+        return;
+      }
+
+      if (!isValidJobUrl(tab.url)) {
+        toast.error('Not a Job Page', {
+          description: 'Saving is restricted for system, communication, search, or social feeds (Gmail, WhatsApp, Google Search, etc.).'
+        });
+        return;
+      }
+
+      setJobUrlInput(tab.url);
+
+      // Extract fallbacks from URL
+      const parsedCompany = extractCompanyFromUrl(tab.url);
+      const parsedRole = extractRoleFromUrl(tab.url);
+
+      // Execute content scraping script inside the active tab DOM
+      chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        func: () => {
+          const metadata = { title: '', company: '' };
+          try {
+            // 1. JSON-LD JobPosting schema extraction
+            const scripts = document.querySelectorAll('script[type="application/ld+json"]');
+            for (const script of scripts) {
+              try {
+                const json = JSON.parse(script.textContent || '');
+                const objects = Array.isArray(json) ? json : [json];
+                for (const obj of objects) {
+                  const type = obj['@type'] || obj['type'];
+                  if (type === 'JobPosting') {
+                    if (obj.title) metadata.title = obj.title;
+                    if (obj.hiringOrganization) {
+                      if (typeof obj.hiringOrganization === 'string') {
+                        metadata.company = obj.hiringOrganization;
+                      } else if (obj.hiringOrganization.name) {
+                        metadata.company = obj.hiringOrganization.name;
+                      }
+                    }
+                    break;
+                  }
+                }
+              } catch (e) {}
+              if (metadata.title && metadata.company) break;
+            }
+
+            // 2. OpenGraph Meta Tags
+            if (!metadata.title) {
+              const ogTitle = document.querySelector('meta[property="og:title"]');
+              const twitterTitle = document.querySelector('meta[name="twitter:title"]');
+              const metaTitle = document.querySelector('meta[name="title"]');
+              metadata.title = ogTitle?.getAttribute('content') || 
+                               twitterTitle?.getAttribute('content') || 
+                               metaTitle?.getAttribute('content') || '';
+            }
+
+            if (!metadata.company) {
+              const ogSiteName = document.querySelector('meta[property="og:site_name"]');
+              const twitterSite = document.querySelector('meta[name="twitter:site"]');
+              metadata.company = ogSiteName?.getAttribute('content') || 
+                                twitterSite?.getAttribute('content') || '';
+            }
+
+            // 3. Fallback H1 Header Tag
+            if (!metadata.title) {
+              const h1 = document.querySelector('h1');
+              if (h1) metadata.title = h1.textContent?.trim() || '';
+            }
+          } catch (e) {}
+          return metadata;
+        }
+      }, (results) => {
+        const scraped = results?.[0]?.result;
+
+        // Apply Scraped Company or fall back to URL extraction
+        if (scraped?.company?.trim()) {
+          setCompanyInput(scraped.company.trim());
+        } else {
+          setCompanyInput(parsedCompany);
+        }
+
+        // Apply Scraped Role or fall back to URL extraction / Title splitting
+        let finalRole = '';
+        if (scraped?.title?.trim()) {
+          finalRole = scraped.title.trim();
+        } else if (parsedRole !== 'Job Opportunity') {
+          finalRole = parsedRole;
+        } else if (tab.title) {
+          // Clean tab title
+          let cleanTitle = tab.title;
+          const delimiters = [' | ', ' - ', ' – ', ' at '];
+          for (const delim of delimiters) {
+            if (cleanTitle.includes(delim)) {
+              cleanTitle = cleanTitle.split(delim)[0];
+            }
+          }
+          finalRole = cleanTitle.trim();
+        } else {
+          finalRole = 'Job Opportunity';
+        }
+
+        setRoleInput(finalRole);
+        setShowAddForm(true);
+
+        const isJobUrl = !['chrome:', 'chrome-extension:', 'about:', 'file:'].includes(new URL(tab.url!).protocol);
+        if (isJobUrl) {
+          toast.success('Captured Tab Details', {
+            description: 'Successfully scraped details from active page content.'
+          });
+        } else {
+          toast.warning('Not a Job Page', {
+            description: 'This URL does not look like a standard job application, but you can still customize and save it.'
+          });
+        }
+      });
+
+    } catch (err: any) {
+      console.error('Failed to capture tab details:', err);
+      toast.error('Capture Failed', {
+        description: 'An error occurred during tab DOM scanning.'
       });
     }
   };
@@ -359,19 +559,32 @@ export const JobList = () => {
     return () => window.removeEventListener('click', handleOutsideClick);
   }, []);
 
-  const handleClearAllJobs = async () => {
-    if (window.confirm("Are you sure you want to clear ALL saved jobs from your local database? This cannot be undone.")) {
-      try {
-        await clearAllJobs();
-        await localDb.loadJobs();
-        toast.success("Local database cleared");
-      } catch (err: any) {
-        toast.error("Failed to clear database", { description: err.message });
+  const handleClearAllJobs = () => {
+    toast('Wipe all saved jobs?', {
+      description: 'This will permanently delete ALL applications from your local database.',
+      duration: 8000,
+      action: {
+        label: 'Confirm Wipe',
+        onClick: async () => {
+          try {
+            await clearAllJobs();
+            await localDb.loadJobs();
+            toast.success('Local database cleared');
+          } catch (err: any) {
+            toast.error('Failed to clear database', { description: err.message });
+          }
+        }
+      },
+      cancel: {
+        label: 'Cancel',
+        onClick: () => {}
       }
-    }
+    });
   };
 
-  const displayedJobs = viewMode === 'sheet' ? jobs : localDb.jobs;
+  const displayedJobs = viewMode === 'sheet' 
+    ? jobs 
+    : (selectedVaultProfile ? (vaultJobs as any[]) : localJobs);
 
   // Stats calculation
   const stats = useMemo(() => {
@@ -406,11 +619,24 @@ export const JobList = () => {
     return result;
   }, [displayedJobs, activeTab, searchTerm]);
 
+  // Paginated list for performance
+  const paginatedJobs = useMemo(() => {
+    return filteredJobs.slice(0, pageSize);
+  }, [filteredJobs, pageSize]);
+
   const handleAddManualJob = async () => {
     if (!jobUrlInput) {
       toast.error('URL required');
       return;
     }
+
+    if (!isValidJobUrl(jobUrlInput)) {
+      toast.error('Not a Job Page', {
+        description: 'Saving is restricted for system, communication, search, or social feeds (Gmail, WhatsApp, Google Search, etc.).'
+      });
+      return;
+    }
+
     try {
       await localDb.addJob(jobUrlInput, companyInput, roleInput);
       setShowAddForm(false);
@@ -438,7 +664,7 @@ export const JobList = () => {
         fetching={fetching}
         handleSyncJobs={handleSyncJobs}
         handleImportCSVFile={handleImportCSVFile}
-        onExportCSV={() => exportToCSV(displayedJobs)}
+        onExportCSV={() => exportToExcel(displayedJobs, activeProfile?.full_name)}
         handleCaptureCurrentTab={handleCaptureCurrentTab}
         jobUrlInput={jobUrlInput}
         setJobUrlInput={setJobUrlInput}
@@ -448,24 +674,45 @@ export const JobList = () => {
         setRoleInput={setRoleInput}
         onAddJob={handleAddManualJob}
         onClearJobs={handleClearAllJobs}
+        onExportMergeUniversal={(file) => exportMergeUniversal(file, activeProfile?.full_name || 'Default_Profile', localJobs)}
+        onImportUniversalVault={importUniversalVault}
+        vaultProfiles={useMemo(() => {
+          const activeSanitized = (activeProfile?.full_name || '')
+            .replace(/[\\\/?:*\[\]]/g, '_')
+            .slice(0, 31)
+            .trim()
+            .toLowerCase();
+          return vaultProfiles.filter(p => {
+            const sanitizedP = p.replace(/[\\\/?:*\[\]]/g, '_').slice(0, 31).trim().toLowerCase();
+            return sanitizedP !== activeSanitized;
+          });
+        }, [vaultProfiles, activeProfile])}
+        selectedVaultProfile={selectedVaultProfile}
+        setSelectedVaultProfile={setSelectedVaultProfile}
+        googleWebAppUrl={googleWebAppUrl}
+        setGoogleWebAppUrl={setGoogleWebAppUrl}
+        onExportMergeGoogleSheet={() => exportMergeGoogleSheet(googleWebAppUrl, activeProfile?.full_name || 'Default_Profile', localJobs)}
+        sheetTabNames={sheetTabs.map(t => t.name)}
+        selectedSheetIdx={selectedSheetIdx}
+        onSheetTabChange={handleSheetTabChange}
       />
 
       {/* Statistics Cards Grid */}
-      <div className="grid grid-cols-4 gap-2.5">
-        <div className="p-3 bg-carbon border border-graphite rounded-md text-center">
-          <div className="text-[9px] font-bold text-ash uppercase tracking-wider mb-0.5">Total</div>
+      <div className="grid grid-cols-4 gap-2">
+        <div className="py-2.5 px-2 bg-carbon border border-graphite rounded-xl text-center">
+          <div className="text-[8px] font-black text-ash uppercase tracking-widest mb-0.5">Total</div>
           <div className="text-sm font-semibold text-paper">{stats.total}</div>
         </div>
-        <div className="p-3 bg-carbon border border-graphite rounded-md text-center">
-          <div className="text-[9px] font-bold text-ash uppercase tracking-wider mb-0.5">To Apply</div>
+        <div className="py-2.5 px-2 bg-carbon border border-graphite rounded-xl text-center">
+          <div className="text-[8px] font-black text-ash uppercase tracking-widest mb-0.5">To Apply</div>
           <div className="text-sm font-semibold text-mist">{stats.notApplied}</div>
         </div>
-        <div className="p-3 bg-carbon border border-graphite rounded-md text-center">
-          <div className="text-[9px] font-bold text-pulse-green uppercase tracking-wider mb-0.5">Applied</div>
+        <div className="py-2.5 px-2 bg-carbon border border-graphite rounded-xl text-center">
+          <div className="text-[8px] font-black text-pulse-green uppercase tracking-widest mb-0.5">Applied</div>
           <div className="text-sm font-semibold text-pulse-green">{stats.applied}</div>
         </div>
-        <div className="p-3 bg-carbon border border-graphite rounded-md text-center">
-          <div className="text-[9px] font-bold text-coral-red uppercase tracking-wider mb-0.5">Skipped</div>
+        <div className="py-2.5 px-2 bg-carbon border border-graphite rounded-xl text-center">
+          <div className="text-[8px] font-black text-coral-red uppercase tracking-widest mb-0.5">Skipped</div>
           <div className="text-sm font-semibold text-coral-red">{stats.skipped}</div>
         </div>
       </div>
@@ -480,31 +727,51 @@ export const JobList = () => {
       />
 
       {/* Jobs List Grid */}
-      <div className="grid gap-3">
-        {filteredJobs.length === 0 ? (
-          <div className="py-12 border border-dashed border-graphite rounded-md flex flex-col items-center justify-center">
-            <Briefcase className="w-8 h-8 mb-3 text-graphite" />
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-ash text-center px-4">
-              {displayedJobs.length === 0 
-                ? (viewMode === 'local' 
-                  ? 'No local applications saved yet. Click "Save Tab" to track one.' 
-                  : 'No jobs synced. Click "Sync Jobs" to fetch.')
-                : 'No matching jobs found.'}
-            </p>
+      <div className="space-y-4">
+        <div className="grid gap-3">
+          {paginatedJobs.length === 0 ? (
+            <div className="py-12 border border-dashed border-graphite rounded-md flex flex-col items-center justify-center">
+              <Briefcase className="w-8 h-8 mb-3 text-graphite" />
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-ash text-center px-4">
+                {displayedJobs.length === 0 
+                  ? (selectedVaultProfile
+                    ? 'No applications found for this profile.'
+                    : (viewMode === 'local' 
+                      ? 'No local applications saved yet. Click "Save Tab" to track one.' 
+                      : 'No jobs found. Click "Refresh Jobs" to fetch.'))
+                  : 'No matching jobs found.'}
+              </p>
+            </div>
+          ) : (
+            paginatedJobs.map((job, idx) => (
+              <JobTableRow
+                key={job.id || idx}
+                job={job}
+                viewMode={viewMode}
+                onDelete={localDb.deleteJob}
+                onApply={handleApply}
+                onUpdateStatus={viewMode === 'sheet' ? updateJobStatus : localDb.updateJobStatus}
+                activeDropdown={activeDropdown}
+                setActiveDropdown={setActiveDropdown}
+                isReadOnly={!!selectedVaultProfile}
+                showProfileBadge={selectedVaultProfile === '__all__'}
+              />
+            ))
+          )}
+        </div>
+
+        {/* Load More Pagination Trigger */}
+        {filteredJobs.length > pageSize && (
+          <div className="flex justify-center pt-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setPageSize(prev => prev + 50)}
+              className="text-[9px] font-bold uppercase tracking-wider text-ash hover:text-mist bg-white/5 border border-graphite px-4 py-2 rounded-xl"
+            >
+              Load More (+50)
+            </Button>
           </div>
-        ) : (
-          filteredJobs.map((job, idx) => (
-            <JobTableRow
-              key={job.id || idx}
-              job={job}
-              viewMode={viewMode}
-              onDelete={localDb.deleteJob}
-              onApply={handleApply}
-              onUpdateStatus={viewMode === 'sheet' ? updateJobStatus : localDb.updateJobStatus}
-              activeDropdown={activeDropdown}
-              setActiveDropdown={setActiveDropdown}
-            />
-          ))
         )}
       </div>
 
@@ -539,7 +806,7 @@ export const JobList = () => {
             <Button
               variant="primary"
               onClick={() => handleConfirmApplied(true)}
-              className="text-[10px] w-28 py-2.5 bg-green-500 hover:bg-green-400 border border-green-500/20 text-white shadow-green-500/25 shadow-lg"
+              className="text-[10px] w-28 py-2.5 bg-pulse-green hover:bg-pulse-green/90 border border-pulse-green/20 text-white shadow-pulse-green/25 shadow-lg"
             >
               Yes, Applied
             </Button>

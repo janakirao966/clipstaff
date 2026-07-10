@@ -52,20 +52,19 @@ loadCacheFromStorage();
 // --- Injected Sidebar Iframe & Floating Toggle Button ---
 
 const iframe = document.createElement('iframe');
-iframe.src = chrome.runtime.getURL('index.html');
 iframe.id = 'clipstaff-sidebar-iframe';
 iframe.setAttribute('allow', 'clipboard-write');
 iframe.style.cssText = `
   position: fixed !important;
   top: 0 !important;
-  right: -420px !important;
+  right: -400px !important;
   width: 400px !important;
   height: 100vh !important;
   z-index: 2147483646 !important;
   border: none !important;
   background: transparent !important;
-  transition: right 0.3s cubic-bezier(0.16, 1, 0.3, 1) !important;
-  box-shadow: -10px 0 30px rgba(0, 0, 0, 0.5) !important;
+  transition: right 0.3s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.3s ease !important;
+  box-shadow: none !important;
   color-scheme: dark !important;
 `;
 
@@ -120,14 +119,31 @@ let isSidebarOpen = false;
 
 function toggleSidebar() {
   isSidebarOpen = !isSidebarOpen;
+  
+  const body = document.body;
+  
   if (isSidebarOpen) {
+    if (!iframe.src) {
+      iframe.src = chrome.runtime.getURL('index.html');
+    }
     iframe.style.setProperty('right', '0px', 'important');
+    iframe.style.setProperty('box-shadow', '-10px 0 30px rgba(0, 0, 0, 0.5)', 'important');
     toggleBtn.style.setProperty('right', '400px', 'important');
     logoImg.style.setProperty('transform', 'rotate(180deg)', 'important');
+    
+    // Shift document body to make room for the sidebar smoothly
+    body.style.setProperty('transition', 'margin-right 0.3s cubic-bezier(0.16, 1, 0.3, 1), width 0.3s cubic-bezier(0.16, 1, 0.3, 1)', 'important');
+    body.style.setProperty('margin-right', '400px', 'important');
+    body.style.setProperty('width', 'calc(100% - 400px)', 'important');
   } else {
-    iframe.style.setProperty('right', '-420px', 'important');
+    iframe.style.setProperty('right', '-400px', 'important');
+    iframe.style.setProperty('box-shadow', 'none', 'important');
     toggleBtn.style.setProperty('right', '0px', 'important');
     logoImg.style.setProperty('transform', 'rotate(0deg)', 'important');
+    
+    // Reset document body layout
+    body.style.setProperty('margin-right', '0px', 'important');
+    body.style.setProperty('width', '100%', 'important');
   }
 }
 

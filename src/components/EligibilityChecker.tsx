@@ -6,6 +6,18 @@ import {
   ClipboardPaste, Loader2, Key, Play, ChevronDown, ChevronUp
 } from 'lucide-react';
 
+interface EligibilityResult {
+  eligibility: 'Eligible' | 'Not Eligible';
+  reasoning: {
+    company: 'Triggered' | 'Not Triggered';
+    sector: 'Triggered' | 'Not Triggered';
+    requirement: 'Triggered' | 'Not Triggered';
+    notes?: string;
+  };
+  userStatus: Record<string, 'Eligible' | 'Not Eligible'>;
+  atsScore?: number;
+}
+
 export const EligibilityChecker = () => {
   const { 
     geminiApiKey, 
@@ -17,6 +29,8 @@ export const EligibilityChecker = () => {
     activeProfile,
     resumeText
   } = useStore();
+
+  const typedResult = lastEligibilityResult as EligibilityResult | null;
 
   const [loading, setLoading] = useState(false);
   const [apiKeyInput, setApiKeyInput] = useState(geminiApiKey);
@@ -147,7 +161,7 @@ Return the response in EXACTLY this JSON structure:
 ### JOB DESCRIPTION:
 ${checkerJdText}`;
 
-      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiApiKey}`, {
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiApiKey}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -171,7 +185,7 @@ ${checkerJdText}`;
         throw new Error('Empty response returned from Gemini API');
       }
 
-      const parsedResult = JSON.parse(contentText.trim());
+      const parsedResult: EligibilityResult = JSON.parse(contentText.trim());
       setLastEligibilityResult(parsedResult);
       toast.success('Eligibility check complete!');
     } catch (err: any) {
@@ -191,8 +205,8 @@ ${checkerJdText}`;
   // Helper to color codes
   const getBadgeColor = (val: string) => {
     return val === 'Eligible' || val === 'Not Triggered'
-      ? 'bg-green-500/10 text-green-400 border-green-500/20'
-      : 'bg-red-500/10 text-red-400 border-red-500/20';
+      ? 'bg-pulse-green/10 text-pulse-green border-pulse-green/20'
+      : 'bg-coral-red/10 text-coral-red border-coral-red/20';
   };
 
   return (
@@ -222,7 +236,7 @@ ${checkerJdText}`;
                 placeholder="AIzaSy..."
                 value={apiKeyInput}
                 onChange={(e) => setApiKeyInput(e.target.value)}
-                className="w-full px-4 py-2.5 bg-carbon border border-graphite rounded-md text-xs text-mist placeholder:text-fog focus:outline-none focus:border-accent/40"
+                className="w-full px-4 py-2.5 bg-carbon border border-graphite rounded-xl text-xs text-mist placeholder:text-fog focus:outline-none focus:border-accent/40"
               />
             </div>
             <Button size="sm" onClick={handleSaveApiKey} className="w-full">
@@ -249,7 +263,7 @@ ${checkerJdText}`;
           placeholder="Paste Job Description here, or select/highlight text on a webpage and click 'Grab Selection' above..."
           value={checkerJdText}
           onChange={(e) => setCheckerJdText(e.target.value)}
-          className="w-full px-4 py-3 bg-carbon border border-graphite rounded-md text-xs text-white placeholder:text-fog focus:outline-none focus:border-accent/40 transition-all resize-none leading-relaxed"
+          className="w-full px-4 py-3 bg-carbon border border-graphite rounded-xl text-xs text-white placeholder:text-fog focus:outline-none focus:border-accent/40 transition-all resize-none leading-relaxed"
         />
 
         <Button 
@@ -263,7 +277,7 @@ ${checkerJdText}`;
       </div>
 
       {/* Results Dashboard */}
-      {lastEligibilityResult && (
+      {typedResult && (
         <Card className="border-accent/20 bg-accent/5 p-4 space-y-4 animate-in fade-in duration-500">
           
           {/* Header Row */}
@@ -271,16 +285,16 @@ ${checkerJdText}`;
             <div className="space-y-0.5">
               <span className="text-[9px] font-bold text-accent uppercase tracking-widest">Eligibility Determination</span>
               <div className="flex items-center gap-2">
-                <span className={`text-xs font-black uppercase px-2.5 py-0.5 rounded border ${getBadgeColor(lastEligibilityResult.eligibility)}`}>
-                  {lastEligibilityResult.eligibility}
+                <span className={`text-xs font-black uppercase px-2.5 py-0.5 rounded border ${getBadgeColor(typedResult.eligibility)}`}>
+                  {typedResult.eligibility}
                 </span>
               </div>
             </div>
             {/* ATS match score for active profile */}
-            {lastEligibilityResult.atsScore !== undefined && (
+            {typedResult.atsScore !== undefined && (
               <div className="text-right">
                 <span className="text-[9px] font-bold text-ash uppercase tracking-widest block">ATS Match Score</span>
-                <span className="text-base font-black text-white">{lastEligibilityResult.atsScore}%</span>
+                <span className="text-base font-black text-white">{typedResult.atsScore}%</span>
                 <span className="text-[8px] text-fog block truncate max-w-[120px]" title={activeProfile?.full_name || 'Active Candidate'}>
                   ({activeProfile?.full_name || 'Active Candidate'})
                 </span>
@@ -292,23 +306,23 @@ ${checkerJdText}`;
           <div className="space-y-2">
             <h4 className="text-[10px] font-bold uppercase tracking-wider text-ash">Triggered Exclusions</h4>
             <div className="grid grid-cols-3 gap-2">
-              <div className={`p-2 rounded border text-center text-[10px] font-bold ${getBadgeColor(lastEligibilityResult.reasoning.company === 'Triggered' ? 'Not Eligible' : 'Eligible')}`}>
+              <div className={`p-2 rounded border text-center text-[10px] font-bold ${getBadgeColor(typedResult.reasoning.company === 'Triggered' ? 'Not Eligible' : 'Eligible')}`}>
                 <span className="block text-[8px] text-fog font-medium uppercase tracking-wider mb-0.5">Company</span>
-                {lastEligibilityResult.reasoning.company === 'Triggered' ? '❌ Triggered' : '✅ Clear'}
+                {typedResult.reasoning.company === 'Triggered' ? '❌ Triggered' : '✅ Clear'}
               </div>
-              <div className={`p-2 rounded border text-center text-[10px] font-bold ${getBadgeColor(lastEligibilityResult.reasoning.sector === 'Triggered' ? 'Not Eligible' : 'Eligible')}`}>
+              <div className={`p-2 rounded border text-center text-[10px] font-bold ${getBadgeColor(typedResult.reasoning.sector === 'Triggered' ? 'Not Eligible' : 'Eligible')}`}>
                 <span className="block text-[8px] text-fog font-medium uppercase tracking-wider mb-0.5">Sector</span>
-                {lastEligibilityResult.reasoning.sector === 'Triggered' ? '❌ Triggered' : '✅ Clear'}
+                {typedResult.reasoning.sector === 'Triggered' ? '❌ Triggered' : '✅ Clear'}
               </div>
-              <div className={`p-2 rounded border text-center text-[10px] font-bold ${getBadgeColor(lastEligibilityResult.reasoning.requirement === 'Triggered' ? 'Not Eligible' : 'Eligible')}`}>
+              <div className={`p-2 rounded border text-center text-[10px] font-bold ${getBadgeColor(typedResult.reasoning.requirement === 'Triggered' ? 'Not Eligible' : 'Eligible')}`}>
                 <span className="block text-[8px] text-fog font-medium uppercase tracking-wider mb-0.5">Requirement</span>
-                {lastEligibilityResult.reasoning.requirement === 'Triggered' ? '❌ Triggered' : '✅ Clear'}
+                {typedResult.reasoning.requirement === 'Triggered' ? '❌ Triggered' : '✅ Clear'}
               </div>
             </div>
-            {lastEligibilityResult.reasoning.notes && (
+            {typedResult.reasoning.notes && (
               <div className="bg-void border border-graphite p-3 rounded-md mt-2">
                 <span className="text-[8px] font-bold uppercase tracking-wider text-accent block mb-1">Additional Notes</span>
-                <p className="text-[10px] text-mist leading-relaxed">{lastEligibilityResult.reasoning.notes}</p>
+                <p className="text-[10px] text-mist leading-relaxed">{typedResult.reasoning.notes}</p>
               </div>
             )}
           </div>
@@ -317,8 +331,8 @@ ${checkerJdText}`;
           <div className="space-y-2">
             <h4 className="text-[10px] font-bold uppercase tracking-wider text-ash">Client Specific Status</h4>
             <div className="space-y-1.5">
-              {lastEligibilityResult.userStatus && Object.keys(lastEligibilityResult.userStatus).map((name) => {
-                const status = lastEligibilityResult.userStatus[name];
+              {typedResult.userStatus && Object.keys(typedResult.userStatus).map((name) => {
+                const status = typedResult.userStatus[name];
                 return (
                   <div key={name} className="flex items-center justify-between p-2.5 bg-void border border-graphite rounded-md">
                     <span className="text-xs font-bold text-white capitalize">{name}</span>

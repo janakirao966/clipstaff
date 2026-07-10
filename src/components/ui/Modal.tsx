@@ -15,7 +15,7 @@ export const Modal = ({ isOpen, onClose, title, children, footer }: ModalProps) 
   return (
     <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-300">
       <div 
-        className="w-full max-w-sm bg-[#0A0A0A] border border-white/10 rounded-[2rem] shadow-premium overflow-hidden animate-in zoom-in-95 duration-300"
+        className="w-full max-w-sm bg-[#0A0A0A] border border-white/10 rounded-2xl shadow-premium overflow-hidden animate-in zoom-in-95 duration-300"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}

@@ -44,6 +44,32 @@ function MainContent() {
   
   const isIframe = React.useMemo(() => window.self !== window.top, []);
 
+  // Load persisted tab on mount
+  React.useEffect(() => {
+    if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+      chrome.storage.local.get(['lastActiveTab'], (result) => {
+        if (result.lastActiveTab) {
+          setActiveTab(result.lastActiveTab);
+        }
+      });
+    } else {
+      const saved = localStorage.getItem('lastActiveTab');
+      if (saved) {
+        setActiveTab(saved as any);
+      }
+    }
+  }, []);
+
+  // Handle switching tabs and saving state
+  const handleTabChange = (tab: 'vault' | 'resume' | 'jobs' | 'match') => {
+    setActiveTab(tab);
+    if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+      chrome.storage.local.set({ lastActiveTab: tab });
+    } else {
+      localStorage.setItem('lastActiveTab', tab);
+    }
+  };
+
   // Initial Profile Load
   React.useEffect(() => {
     if (user) {
@@ -146,7 +172,7 @@ function MainContent() {
         <button
           role="tab"
           aria-selected={activeTab === 'vault'}
-          onClick={() => setActiveTab('vault')}
+          onClick={() => handleTabChange('vault')}
           className={`flex-1 flex items-center justify-center gap-2 py-3.5 text-[11px] font-medium tracking-tight transition-all duration-200 active:scale-[0.98] relative ${
             activeTab === 'vault' 
               ? 'text-accent border-b-2 border-accent bg-accent/[0.01]' 
@@ -159,7 +185,7 @@ function MainContent() {
         <button
           role="tab"
           aria-selected={activeTab === 'resume'}
-          onClick={() => setActiveTab('resume')}
+          onClick={() => handleTabChange('resume')}
           className={`flex-1 flex items-center justify-center gap-2 py-3.5 text-[11px] font-medium tracking-tight transition-all duration-200 active:scale-[0.98] relative ${
             activeTab === 'resume' 
               ? 'text-accent border-b-2 border-accent bg-accent/[0.01]' 
@@ -172,7 +198,7 @@ function MainContent() {
         <button
           role="tab"
           aria-selected={activeTab === 'jobs'}
-          onClick={() => setActiveTab('jobs')}
+          onClick={() => handleTabChange('jobs')}
           className={`flex-1 flex items-center justify-center gap-2 py-3.5 text-[11px] font-medium tracking-tight transition-all duration-200 active:scale-[0.98] relative ${
             activeTab === 'jobs' 
               ? 'text-accent border-b-2 border-accent bg-accent/[0.01]' 
@@ -185,7 +211,7 @@ function MainContent() {
         <button
           role="tab"
           aria-selected={activeTab === 'match'}
-          onClick={() => setActiveTab('match')}
+          onClick={() => handleTabChange('match')}
           className={`flex-1 flex items-center justify-center gap-2 py-3.5 text-[11px] font-medium tracking-tight transition-all duration-200 active:scale-[0.98] relative ${
             activeTab === 'match' 
               ? 'text-accent border-b-2 border-accent bg-accent/[0.01]' 
