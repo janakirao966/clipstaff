@@ -107,6 +107,15 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
 
 // Handle keyboard command shortcut
 chrome.commands.onCommand.addListener((command, tab) => {
+  chrome.storage.local.set({ 
+    lastCommandTriggered: { 
+      command, 
+      timestamp: new Date().toISOString(), 
+      hasTab: !!tab, 
+      tabId: tab?.id,
+      tabUrl: tab?.url 
+    } 
+  });
   if (command === 'save-current-job' && tab) {
     handleSaveJob(tab);
   }
@@ -308,20 +317,29 @@ async function handleSaveJob(tab: chrome.tabs.Tab, urlOverride?: string) {
       await addJob(jobItem);
       console.log('Saved job to IndexedDB from background:', jobItem);
       
+      // Save audit status to storage
+      chrome.storage.local.set({ 
+        lastBackgroundStatus: `Successfully saved ${role} at ${company}!`,
+        lastBackgroundError: null
+      });
+
       // Broadcast DB change to sidebar if it's open
       chrome.runtime.sendMessage({ type: 'JOB_DATABASE_CHANGED' }).catch(() => {});
 
       // Show success toast
       showFeedback(targetTab.id, `Saved ${role} at ${company}!`, false);
     } catch (dbErr: any) {
+      const errMsg = `Database error: ${dbErr.message || 'Failed to write to database'}`;
+      chrome.storage.local.set({ lastBackgroundError: errMsg });
       if (dbErr.message === 'Already saved') {
         throw new Error('Already saved');
       } else {
-        throw new Error(`Database error: ${dbErr.message || 'Failed to write to database'}`);
+        throw new Error(errMsg);
       }
     }
   } catch (err: any) {
     console.error('Failed to save job in background:', err);
+    chrome.storage.local.set({ lastBackgroundError: err.message || err.toString() });
     showFeedback(targetTab.id, err.message || 'Failed to save job', true);
   }
 }
