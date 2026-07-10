@@ -216,6 +216,15 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
 
 
+  if (message.type === 'SAVE_CURRENT_JOB_VIA_SHORTCUT') {
+    console.log('[Background SW] Received SAVE_CURRENT_JOB_VIA_SHORTCUT message from tab:', _sender.tab?.id, 'with URL:', message.url);
+    if (_sender.tab) {
+      handleSaveJob(_sender.tab, message.url);
+    }
+    sendResponse({ success: true });
+    return true;
+  }
+
   if (message.type === 'TRIGGER_BATCH_PUSH') {
     handleBatchPushUpload(message.force || false)
       .then(() => sendResponse({ success: true }))

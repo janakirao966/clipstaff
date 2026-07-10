@@ -605,5 +605,77 @@ async function handleInstantExpansion(element: HTMLElement) {
 // --- Spotlight Command Bar HUD Overlay ---
 initSpotlight(() => shortcutCache);
 
+// --- Custom Fallback Shortcut Handler for Saving Current Job ---
+const isMac = /Mac|iPod|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+
+interface ParsedShortcut {
+  ctrl: boolean;
+  shift: boolean;
+  alt: boolean;
+  meta: boolean;
+  keyChar: string;
+}
+
+let parsedShortcut = parseShortcut(isMac ? 'Cmd+Shift+X' : 'Ctrl+Shift+X');
+
+function parseShortcut(shortcutStr: string): ParsedShortcut {
+  if (!shortcutStr || !shortcutStr.includes('+')) {
+    return { ctrl: !isMac, shift: true, alt: false, meta: isMac, keyChar: 'x' };
+  }
+  const parts = shortcutStr.split('+').map(p => p.trim().toLowerCase());
+  
+  const needsCtrl = parts.includes('ctrl') || parts.includes('control');
+  const needsMeta = parts.includes('meta') || parts.includes('⌘') || parts.includes('cmd') || parts.includes('command');
+  
+  const ctrl = needsCtrl;
+  const meta = needsMeta;
+  const shift = parts.includes('shift');
+  const alt = parts.includes('alt') || parts.includes('option');
+  const keyChar = parts.find(p => !['ctrl', 'control', 'shift', 'alt', 'option', 'meta', '⌘', 'cmd', 'command'].includes(p)) || '';
+  
+  return { ctrl, shift, alt, meta, keyChar };
+}
+
+// Load shortcut from storage immediately
+chrome.storage.local.get(['activeSaveShortcut'], (res) => {
+  if (res && res.activeSaveShortcut) {
+    parsedShortcut = parseShortcut(res.activeSaveShortcut);
+  }
+});
+
+// Update shortcut dynamically if changed in storage
+chrome.storage.onChanged.addListener((changes) => {
+  if (changes.activeSaveShortcut && changes.activeSaveShortcut.newValue) {
+    parsedShortcut = parseShortcut(changes.activeSaveShortcut.newValue);
+  }
+});
+
+// Fallback keydown event listener in the bubble phase
+document.addEventListener('keydown', (event) => {
+  const { ctrl, shift, alt, meta, keyChar } = parsedShortcut;
+  if (!keyChar) return;
+
+  const modifiersMatch = 
+    (ctrl === event.ctrlKey) &&
+    (shift === event.shiftKey) &&
+    (alt === event.altKey) &&
+    (meta === event.metaKey);
+    
+  const keyMatch = event.key.toLowerCase() === keyChar || event.code.toLowerCase() === `key${keyChar}`;
+  
+  if (modifiersMatch && keyMatch) {
+    event.preventDefault();
+    event.stopPropagation();
+    
+    console.log('[ClipStaff Content] Custom shortcut triggered, sending SAVE_CURRENT_JOB_VIA_SHORTCUT message...');
+    chrome.runtime.sendMessage({
+      type: 'SAVE_CURRENT_JOB_VIA_SHORTCUT',
+      url: window.location.href
+    }).catch((err) => {
+      console.warn('ClipStaff: Failed to send SAVE_CURRENT_JOB_VIA_SHORTCUT message:', err);
+    });
+  }
+});
+
 
 
