@@ -85,7 +85,7 @@ interface ProfileDrawerProps {
 
 export const ProfileDrawer = ({ isOpen, onClose }: ProfileDrawerProps) => {
   const { fetchProfile, saveProfile } = useProfiles();
-  const { profileTriggers, updateProfileTrigger, setResumeText } = useStore();
+  const { profileTriggers, updateProfileTrigger, setResumeText, setProfiles, setActiveProfile } = useStore();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [activeSection, setActiveSection] = useState<'personal' | 'experience' | 'education' | 'certs'>('personal');
@@ -170,13 +170,42 @@ export const ProfileDrawer = ({ isOpen, onClose }: ProfileDrawerProps) => {
           certifications: p.certifications || p.certs || []
         });
 
+        const importedProfile = {
+          id: p.id || 'local-imported',
+          user_id: 'local-user',
+          name: rootKey || p.name || '',
+          full_name: p.full_name || p.name || '',
+          first_name: p.first_name || '',
+          middle_name: p.middle_name || '',
+          last_name: p.last_name || '',
+          email: p.email || '',
+          phone: p.phone || '',
+          linkedin_url: p.linkedin_url || p.linkedin || '',
+          portfolio_url: p.portfolio_url || '',
+          location: p.location || '',
+          street_address: p.street_address || '',
+          city: p.city || '',
+          state: p.state || '',
+          pin_code: p.pin_code || '',
+          professional_subtitle: p.professional_subtitle || p.subtitle || '',
+          experience: parsedExperiences,
+          education: education,
+          certifications: p.certifications || p.certs || [],
+          is_active: true,
+          created_at: p.created_at || new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        };
+
+        setProfiles([importedProfile]);
+        setActiveProfile(importedProfile);
+
         // Set resumeText in the store so ResumeBuilder gets it and syncs experience shortcuts
         if (resumeRawText) {
           setResumeText(resumeRawText);
         }
 
         toast.success('Backup JSON Loaded', {
-          description: 'Click Save to persist changes and update shortcuts.'
+          description: 'Profile is now active. Click Save to persist to database.'
         });
 
         e.target.value = '';

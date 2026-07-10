@@ -38,7 +38,8 @@ const fetchViaBackground = (
 };
 
 export const JobList = () => {
-  const { spreadsheetUrl, setSpreadsheetUrl, googleWebAppUrl, setGoogleWebAppUrl, jobs, setJobs, updateJobStatus, activeProfile, sheetTabs, setSheetTabs, selectedSheetIdx, setSelectedSheetIdx } = useStore();
+  const { spreadsheetUrl, setSpreadsheetUrl, googleWebAppUrl, setGoogleWebAppUrl, jobs, setJobs, updateJobStatus, activeProfile, profiles, sheetTabs, setSheetTabs, selectedSheetIdx, setSelectedSheetIdx } = useStore();
+  const activeProfileToUse = activeProfile || (profiles && profiles.length > 0 ? profiles[0] : null);
   const localDb = useJobsDb();
   const [, startTransition] = useTransition();
   const [searchTerm, setSearchTerm] = useState('');
@@ -89,14 +90,14 @@ export const JobList = () => {
 
   // Prevent viewing the current profile's data as a vault tab
   useEffect(() => {
-    if (selectedVaultProfile && (activeProfile?.full_name || activeProfile?.name)) {
-      const activeSanitized = sanitizeProfileName(activeProfile.full_name || activeProfile.name).toLowerCase();
+    if (selectedVaultProfile && (activeProfileToUse?.full_name || activeProfileToUse?.name)) {
+      const activeSanitized = sanitizeProfileName(activeProfileToUse.full_name || activeProfileToUse.name).toLowerCase();
       const selectedSanitized = sanitizeProfileName(selectedVaultProfile).toLowerCase();
       if (activeSanitized === selectedSanitized) {
         setSelectedVaultProfile('');
       }
     }
-  }, [selectedVaultProfile, activeProfile, setSelectedVaultProfile]);
+  }, [selectedVaultProfile, activeProfileToUse, setSelectedVaultProfile]);
 
   // Listen for window focus/visibility change to prompt confirmation when user comes back
   useEffect(() => {
@@ -743,23 +744,23 @@ export const JobList = () => {
         fetching={fetching}
         handleSyncJobs={handleSyncJobs}
         handleImportCSVFile={handleImportCSVFile}
-        onExportCSV={() => exportToExcel(displayedJobs, activeProfile?.full_name || activeProfile?.name)}
+        onExportCSV={() => exportToExcel(displayedJobs, activeProfileToUse?.full_name || activeProfileToUse?.name)}
         onOpenAddModal={onOpenAddModal}
         onClearJobs={handleClearAllJobs}
-        onExportMergeUniversal={(file) => exportMergeUniversal(file, activeProfile?.full_name || activeProfile?.name || 'Default_Profile', localJobs)}
+        onExportMergeUniversal={(file) => exportMergeUniversal(file, activeProfileToUse?.full_name || activeProfileToUse?.name || 'Default_Profile', localJobs)}
         onImportUniversalVault={importUniversalVault}
         vaultProfiles={useMemo(() => {
-          const activeSanitized = sanitizeProfileName(activeProfile?.full_name || activeProfile?.name).toLowerCase();
+          const activeSanitized = sanitizeProfileName(activeProfileToUse?.full_name || activeProfileToUse?.name).toLowerCase();
           return vaultProfiles.filter(p => {
             const sanitizedP = sanitizeProfileName(p).toLowerCase();
             return sanitizedP !== activeSanitized;
           });
-        }, [vaultProfiles, activeProfile])}
+        }, [vaultProfiles, activeProfileToUse])}
         selectedVaultProfile={selectedVaultProfile}
         setSelectedVaultProfile={setSelectedVaultProfile}
         googleWebAppUrl={googleWebAppUrl}
         setGoogleWebAppUrl={setGoogleWebAppUrl}
-        onExportMergeGoogleSheet={() => exportMergeGoogleSheet(googleWebAppUrl, activeProfile?.full_name || activeProfile?.name || 'Default_Profile', localJobs)}
+        onExportMergeGoogleSheet={() => exportMergeGoogleSheet(googleWebAppUrl, activeProfileToUse?.full_name || activeProfileToUse?.name || 'Default_Profile', localJobs)}
         sheetTabNames={sheetTabs.map(t => t.name)}
         selectedSheetIdx={selectedSheetIdx}
         onSheetTabChange={handleSheetTabChange}
