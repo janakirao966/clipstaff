@@ -137,10 +137,16 @@ export const useJobsDb = () => {
   }, [loadJobs]);
 
   const deleteJob = useCallback(async (id: string) => {
-    await db.deleteJob(id);
-    await loadJobs();
-    if (typeof chrome !== 'undefined' && chrome.runtime) {
-      chrome.runtime.sendMessage({ type: 'JOB_DATABASE_CHANGED' });
+    try {
+      await db.deleteJob(id);
+      await loadJobs();
+      toast.success('Application deleted successfully');
+      if (typeof chrome !== 'undefined' && chrome.runtime) {
+        chrome.runtime.sendMessage({ type: 'JOB_DATABASE_CHANGED' });
+      }
+    } catch (e: any) {
+      console.error('Failed to delete job:', e);
+      toast.error('Failed to delete application', { description: e.message || String(e) });
     }
   }, [loadJobs]);
 
@@ -576,6 +582,7 @@ export const useJobsDb = () => {
       await db.deleteUniversalJobById(id);
       await loadVaultJobs();
       await loadVaultProfiles();
+      toast.success('Vault application deleted successfully');
     } catch (e) {
       console.error('Failed to delete universal vault job:', e);
       toast.error('Failed to delete job from vault');

@@ -423,9 +423,15 @@ export const SnippetList = ({
             <Button 
               variant="danger" 
               size="sm" 
-              onClick={() => {
+              onClick={async () => {
                 if (deletingId) {
-                  deleteSnippet(deletingId);
+                  try {
+                    await deleteSnippet(deletingId);
+                    toast.success('Shortcut deleted successfully');
+                  } catch (e: any) {
+                    console.error('Failed to delete snippet:', e);
+                    toast.error('Failed to delete shortcut', { description: e.message || String(e) });
+                  }
                   setDeletingId(null);
                 }
               }}
