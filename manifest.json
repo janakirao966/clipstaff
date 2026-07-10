@@ -12,6 +12,7 @@
     "storage",
     "activeTab",
     "tabs",
+    "alarms",
     "clipboardWrite",
     "clipboardRead",
     "scripting",
