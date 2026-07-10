@@ -137,15 +137,17 @@ export const useJobsDb = () => {
   }, [loadJobs]);
 
   const deleteJob = useCallback(async (id: string) => {
+    console.log('[ClipStaff Hook] deleteJob called with ID:', id);
     try {
       await db.deleteJob(id);
+      console.log('[ClipStaff Hook] db.deleteJob completed successfully for ID:', id);
       await loadJobs();
       toast.success('Application deleted successfully');
       if (typeof chrome !== 'undefined' && chrome.runtime) {
         chrome.runtime.sendMessage({ type: 'JOB_DATABASE_CHANGED' });
       }
     } catch (e: any) {
-      console.error('Failed to delete job:', e);
+      console.error('[ClipStaff Hook] Failed to delete job:', e);
       toast.error('Failed to delete application', { description: e.message || String(e) });
     }
   }, [loadJobs]);
@@ -578,13 +580,15 @@ export const useJobsDb = () => {
   }, [loadJobs]);
 
   const deleteVaultJob = useCallback(async (id: string) => {
+    console.log('[ClipStaff Hook] deleteVaultJob called with ID:', id);
     try {
       await db.deleteUniversalJobById(id);
+      console.log('[ClipStaff Hook] db.deleteUniversalJobById completed successfully for ID:', id);
       await loadVaultJobs();
       await loadVaultProfiles();
       toast.success('Vault application deleted successfully');
     } catch (e) {
-      console.error('Failed to delete universal vault job:', e);
+      console.error('[ClipStaff Hook] Failed to delete universal vault job:', e);
       toast.error('Failed to delete job from vault');
     }
   }, [loadVaultJobs, loadVaultProfiles]);

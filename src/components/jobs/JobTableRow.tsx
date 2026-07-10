@@ -80,6 +80,7 @@ export const JobTableRow = ({
           {viewMode === 'local' && !isReadOnly && (
             <button
               onClick={(e) => {
+                console.log('[ClipStaff UI] Delete button clicked in JobTableRow for job ID:', job.id);
                 e.stopPropagation();
                 onDelete(job.id);
               }}

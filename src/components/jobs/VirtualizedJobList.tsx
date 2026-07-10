@@ -213,7 +213,10 @@ export const VirtualizedJobList = ({
           
           {viewMode === 'local' && !isReadOnly && (
             <button
-              onClick={() => onDelete(job.id)}
+              onClick={() => {
+                console.log('[ClipStaff UI] Delete button clicked in VirtualizedJobList TableRow for job ID:', job.id);
+                onDelete(job.id);
+              }}
               className="p-1 rounded bg-red-500/5 hover:bg-red-500/15 text-ash hover:text-red-400 border border-transparent hover:border-red-500/20 transition-all"
               title="Delete application"
             >
