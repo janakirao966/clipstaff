@@ -190,11 +190,6 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     sendResponse({ status: 'done' });
     return true;
   }
-  if (message.type === 'UPDATE_SAVE_SHORTCUT') {
-    parsedShortcut = parseShortcut(message.shortcut);
-    sendResponse({ status: 'done' });
-    return true;
-  }
 });
 
 function showPageToast(message: string, isError: boolean = false) {
@@ -610,108 +605,5 @@ async function handleInstantExpansion(element: HTMLElement) {
 // --- Spotlight Command Bar HUD Overlay ---
 initSpotlight(() => shortcutCache);
 
-// --- Custom Shortcut Handler for Saving Current Job ---
-const isMac = /Mac|iPod|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
 
-interface ParsedShortcut {
-  ctrl: boolean;
-  shift: boolean;
-  alt: boolean;
-  meta: boolean;
-  keyChar: string;
-}
-
-let parsedShortcut = parseShortcut(isMac ? 'Cmd+Shift+X' : 'Ctrl+Shift+X'); // Initial default fallback
-let isShortcutListenerRegistered = false;
-
-function parseShortcut(shortcutStr: string): ParsedShortcut {
-  if (!shortcutStr || !shortcutStr.includes('+')) {
-    return parseShortcut(isMac ? 'Cmd+Shift+X' : 'Ctrl+Shift+X');
-  }
-  const parts = shortcutStr.split('+').map(p => p.trim().toLowerCase());
-  
-  const needsCtrl = parts.includes('ctrl') || parts.includes('control');
-  const needsMeta = parts.includes('meta') || parts.includes('⌘') || parts.includes('cmd') || parts.includes('command') || parts.includes('macctrl');
-  
-  // Handle Mac Command key: if the shortcut has ctrl or cmd, map to meta on Mac, ctrl on Windows/Linux
-  const hasCmdOrCtrlNeed = needsCtrl || needsMeta;
-  const ctrl = isMac ? false : hasCmdOrCtrlNeed;
-  const meta = isMac ? hasCmdOrCtrlNeed : false;
-  
-  const shift = parts.includes('shift');
-  const alt = parts.includes('alt') || parts.includes('option');
-  
-  const keyChar = parts.find(p => !['ctrl', 'control', 'shift', 'alt', 'option', 'meta', '⌘', 'cmd', 'command', 'macctrl'].includes(p)) || '';
-  
-  return { ctrl, shift, alt, meta, keyChar };
-}
-
-function registerShortcutListener() {
-  if (isShortcutListenerRegistered) return;
-  
-  document.addEventListener('keydown', (event) => {
-    const { ctrl, shift, alt, meta, keyChar } = parsedShortcut;
-    if (!keyChar) return;
-
-    // Direct modifier checks
-    const modifiersMatch = 
-      (ctrl === event.ctrlKey) &&
-      (shift === event.shiftKey) &&
-      (alt === event.altKey) &&
-      (meta === event.metaKey);
-      
-    // Match the key code or key character
-    const keyMatch = event.key.toLowerCase() === keyChar || event.code.toLowerCase() === `key${keyChar}`;
-    
-    // Diagnostic logging to find why shortcut isn't matching
-    if (event.ctrlKey || event.metaKey || event.shiftKey || event.key.toLowerCase() === keyChar) {
-      console.log('ClipStaff Keypress Diagnostic:', {
-        eventKey: event.key,
-        eventCode: event.code,
-        parsedShortcut,
-        modifiersMatch,
-        keyMatch
-      });
-    }
-
-    if (modifiersMatch && keyMatch) {
-      event.preventDefault();
-      event.stopPropagation();
-      
-      console.log('ClipStaff: Shortcut matched! Sending SAVE_CURRENT_JOB_VIA_SHORTCUT message...');
-      chrome.runtime.sendMessage({
-        type: 'SAVE_CURRENT_JOB_VIA_SHORTCUT',
-        url: window.location.href
-      }).catch((err) => {
-        console.warn('ClipStaff: Failed to send SAVE_CURRENT_JOB_VIA_SHORTCUT message:', err);
-      });
-    }
-  }, true); // capturing phase for high priority execution
-  
-  isShortcutListenerRegistered = true;
-}
-
-// Load shortcut from storage immediately
-try {
-  chrome.storage.local.get(['activeSaveShortcut'], (res) => {
-    if (res && res.activeSaveShortcut) {
-      parsedShortcut = parseShortcut(res.activeSaveShortcut);
-    }
-    registerShortcutListener();
-  });
-} catch (e) {
-  console.log('Failed to fetch activeSaveShortcut:', e);
-  registerShortcutListener(); // Ensure listener still runs even if storage fails
-}
-
-// Update shortcut dynamically if changed in storage
-try {
-  chrome.storage.onChanged.addListener((changes) => {
-    if (changes.activeSaveShortcut && changes.activeSaveShortcut.newValue) {
-      parsedShortcut = parseShortcut(changes.activeSaveShortcut.newValue);
-    }
-  });
-} catch (e) {
-  console.log('Failed to register storage change listener:', e);
-}
 

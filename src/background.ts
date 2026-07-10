@@ -61,8 +61,14 @@ if (typeof chrome !== 'undefined' && chrome.commands && (chrome.commands as any)
   });
 }
 
+// Call on startup to initialize shortcut cache
+updateShortcutCache();
+
 chrome.runtime.onInstalled.addListener(() => {
   console.log('[SW] ClipStaff extension installed');
+  
+  // Initialize shortcut cache on install/update
+  updateShortcutCache();
   
   // Register context menu for saving current job
   chrome.contextMenus.create({
@@ -195,13 +201,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return true; // Keep message channel open for async response
   }
 
-  if (message.type === 'SAVE_CURRENT_JOB_VIA_SHORTCUT') {
-    if (_sender.tab) {
-      handleSaveJob(_sender.tab, message.url);
-    }
-    sendResponse({ success: true });
-    return true;
-  }
+
 
   if (message.type === 'TRIGGER_BATCH_PUSH') {
     handleBatchPushUpload(message.force || false)
