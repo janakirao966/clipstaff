@@ -663,10 +663,22 @@ function registerShortcutListener() {
     // Match the key code or key character
     const keyMatch = event.key.toLowerCase() === keyChar || event.code.toLowerCase() === `key${keyChar}`;
     
+    // Diagnostic logging to find why shortcut isn't matching
+    if (event.ctrlKey || event.metaKey || event.shiftKey || event.key.toLowerCase() === keyChar) {
+      console.log('ClipStaff Keypress Diagnostic:', {
+        eventKey: event.key,
+        eventCode: event.code,
+        parsedShortcut,
+        modifiersMatch,
+        keyMatch
+      });
+    }
+
     if (modifiersMatch && keyMatch) {
       event.preventDefault();
       event.stopPropagation();
       
+      console.log('ClipStaff: Shortcut matched! Sending SAVE_CURRENT_JOB_VIA_SHORTCUT message...');
       chrome.runtime.sendMessage({
         type: 'SAVE_CURRENT_JOB_VIA_SHORTCUT',
         url: window.location.href
