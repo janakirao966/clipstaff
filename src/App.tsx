@@ -22,6 +22,7 @@ import {
 import { useStore } from './store/useStore'
 import { syncShortcutsToStorage } from './lib/sync'
 import { Button, ErrorBoundary } from './components/ui'
+import { runAllVerificationTests } from './lib/verification_tests'
 
 // ClipStaff Logo Component — uses the actual project icon
 const ClipStaffLogo = ({ size = 32, className = "" }: { size?: number; className?: string }) => (
@@ -57,6 +58,9 @@ function MainContent() {
       if (saved) {
         setActiveTab(saved as any);
       }
+    }
+    if (typeof window !== 'undefined') {
+      (window as any).runAllVerificationTests = runAllVerificationTests;
     }
   }, []);
 
