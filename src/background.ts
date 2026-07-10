@@ -521,7 +521,7 @@ async function handleBatchPushUpload(forceSync = false) {
       return;
     }
 
-    const profileName = activeProfile?.name || 'Default_Profile';
+    const profileName = activeProfile?.full_name || activeProfile?.name || 'Default_Profile';
     const sanitizedName = profileName.replace(/[\\\/?:*\[\]\s]/g, '_').slice(0, 31).trim();
 
     // Chunk size: 50

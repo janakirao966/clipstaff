@@ -271,18 +271,19 @@ export const useJobsDb = () => {
       await loadVaultProfiles();
 
       // Filter own sheet out of notification count
-      const activeSanitized = sanitizeProfileName(activeProfile?.name).toLowerCase();
+      const activeSanitizedName = sanitizeProfileName(activeProfile?.name || '').toLowerCase();
+      const activeSanitizedFullName = sanitizeProfileName(activeProfile?.full_name || '').toLowerCase();
 
       const hasOwnSheet = workbook.worksheets.some(sheet => {
         if (sheet.name === '__meta__') return false;
         const nameSanitized = sanitizeProfileName(sheet.name).toLowerCase();
-        return nameSanitized === activeSanitized;
+        return nameSanitized === activeSanitizedName || nameSanitized === activeSanitizedFullName;
       });
 
       const otherProfilesCount = hasOwnSheet ? Math.max(0, validSheetsCount - 1) : validSheetsCount;
       const otherJobsCount = allVaultJobs.filter(job => {
         const jobProfileSanitized = sanitizeProfileName(job.profileName).toLowerCase();
-        return jobProfileSanitized !== activeSanitized;
+        return jobProfileSanitized !== activeSanitizedName && jobProfileSanitized !== activeSanitizedFullName;
       }).length;
 
       toast.dismiss(loadingToast);
