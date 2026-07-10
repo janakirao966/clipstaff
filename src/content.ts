@@ -650,20 +650,24 @@ chrome.storage.onChanged.addListener((changes) => {
   }
 });
 
-// Fallback keydown event listener in the bubble phase
+// Fallback keydown event listener in the capturing phase to prevent webpage interception
 document.addEventListener('keydown', (event) => {
   const { ctrl, shift, alt, meta, keyChar } = parsedShortcut;
   if (!keyChar) return;
 
+  // Lax matching: treat Ctrl and Cmd (Meta) as interchangeable control keys
+  const needsCtrlOrMeta = ctrl || meta;
+  const isCtrlOrMetaPressed = event.ctrlKey || event.metaKey;
+
   const modifiersMatch = 
-    (ctrl === event.ctrlKey) &&
+    (needsCtrlOrMeta === isCtrlOrMetaPressed) &&
     (shift === event.shiftKey) &&
-    (alt === event.altKey) &&
-    (meta === event.metaKey);
+    (alt === event.altKey);
     
   const keyMatch = event.key.toLowerCase() === keyChar || event.code.toLowerCase() === `key${keyChar}`;
   
   if (modifiersMatch && keyMatch) {
+    // Only prevent default and stop propagation if we have a match
     event.preventDefault();
     event.stopPropagation();
     
@@ -675,7 +679,7 @@ document.addEventListener('keydown', (event) => {
       console.warn('ClipStaff: Failed to send SAVE_CURRENT_JOB_VIA_SHORTCUT message:', err);
     });
   }
-});
+}, true);
 
 
 
