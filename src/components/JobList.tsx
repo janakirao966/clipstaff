@@ -185,29 +185,11 @@ export const JobList = () => {
           const workbook = new ExcelJS.Workbook();
           await workbook.xlsx.load(bytes.buffer);
 
-          const ownProfileNameLower = activeProfile?.name
-            ? activeProfile.name.replace(/[\\\/?:*\[\]]/g, '_').slice(0, 31).trim().toLowerCase()
-            : '';
-          const ownProfileFullNameLower = activeProfile?.full_name
-            ? activeProfile.full_name.replace(/[\\\/?:*\[\]]/g, '_').slice(0, 31).trim().toLowerCase()
-            : '';
-
           let validSheets = workbook.worksheets.filter(
             (s: any) => s.state !== 'hidden' && s.name !== '__meta__'
           );
 
           if (validSheets.length > 0) {
-            // Exclude own sheet from vault tabs if there are other sheets
-            if ((ownProfileNameLower || ownProfileFullNameLower) && validSheets.length > 1) {
-              const filtered = validSheets.filter((s: any) => {
-                const sheetNameLower = s.name.replace(/[\\\/?:*\[\]]/g, '_').slice(0, 31).trim().toLowerCase();
-                return sheetNameLower !== ownProfileNameLower && sheetNameLower !== ownProfileFullNameLower;
-              });
-              if (filtered.length > 0) {
-                validSheets = filtered;
-              }
-            }
-
             const currentJobs = useStore.getState().jobs;
 
             if (validSheets.length === 1) {
@@ -238,10 +220,10 @@ export const JobList = () => {
               });
 
               let defaultIdx = 0;
-              if (activeProfile) {
-                const profileNameLower = (activeProfile.name || '')
+              if (activeProfileToUse) {
+                const profileNameLower = (activeProfileToUse.name || '')
                   .replace(/[\\\/?:*\[\]]/g, '_').slice(0, 31).trim().toLowerCase();
-                const profileFullNameLower = (activeProfile.full_name || '')
+                const profileFullNameLower = (activeProfileToUse.full_name || '')
                   .replace(/[\\\/?:*\[\]]/g, '_').slice(0, 31).trim().toLowerCase();
                 const matchIdx = tabs.findIndex(t => {
                   const sheetNameLower = t.name.replace(/[\\\/?:*\[\]]/g, '_').slice(0, 31).trim().toLowerCase();
