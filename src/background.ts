@@ -107,6 +107,7 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
 
 // Handle keyboard command shortcut
 chrome.commands.onCommand.addListener((command, tab) => {
+  console.log('[Background SW] Shortcut command triggered:', command);
   chrome.storage.local.set({ 
     lastCommandTriggered: { 
       command, 
@@ -117,7 +118,10 @@ chrome.commands.onCommand.addListener((command, tab) => {
     } 
   });
   if (command === 'save-current-job' && tab) {
+    console.log('[Background SW] Executing save-current-job for tab:', tab.id, 'with URL:', tab.url);
     handleSaveJob(tab);
+  } else {
+    console.warn('[Background SW] Command ignored or tab is missing:', { command, hasTab: !!tab });
   }
 });
 
@@ -242,7 +246,7 @@ function getActiveTabWithTimeout(timeoutMs = 2000): Promise<chrome.tabs.Tab> {
       reject(new Error('Tab query timed out'));
     }, timeoutMs);
 
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+    chrome.tabs.query({ active: true, lastFocusedWindow: true }, (tabs) => {
       clearTimeout(timer);
       if (chrome.runtime.lastError) {
         reject(new Error(chrome.runtime.lastError.message));
