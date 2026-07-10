@@ -150,24 +150,24 @@ export const ProfileDrawer = ({ isOpen, onClose }: ProfileDrawerProps) => {
 
         setFormData({
           name: rootKey || p.name || '',
-          full_name: p.name || '',
+          full_name: p.full_name || p.name || '',
           first_name: p.first_name || '',
           middle_name: p.middle_name || '',
           last_name: p.last_name || '',
           email: p.email || '',
           phone: p.phone || '',
-          linkedin_url: p.linkedin || '',
-          portfolio_url: '',
+          linkedin_url: p.linkedin_url || p.linkedin || '',
+          portfolio_url: p.portfolio_url || '',
           location: p.location || '',
           street_address: p.street_address || '',
           city: p.city || '',
           state: p.state || '',
           pin_code: p.pin_code || '',
-          professional_subtitle: p.subtitle || '',
+          professional_subtitle: p.professional_subtitle || p.subtitle || '',
           password: p.password || '',
           experience: parsedExperiences,
           education: education,
-          certifications: p.certs || []
+          certifications: p.certifications || p.certs || []
         });
 
         // Set resumeText in the store so ResumeBuilder gets it and syncs experience shortcuts
