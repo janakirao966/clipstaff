@@ -19,22 +19,13 @@ interface CsvSyncSectionProps {
   setViewMode: (mode: 'sheet' | 'local') => void;
   showSettings: boolean;
   setShowSettings: (val: boolean) => void;
-  showAddForm: boolean;
-  setShowAddForm: (val: boolean) => void;
   urlInput: string;
   setUrlInput: (val: string) => void;
   fetching: boolean;
   handleSyncJobs: () => void;
   handleImportCSVFile: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onExportCSV: () => void;
-  handleCaptureCurrentTab: () => void;
-  jobUrlInput: string;
-  setJobUrlInput: (val: string) => void;
-  companyInput: string;
-  setCompanyInput: (val: string) => void;
-  roleInput: string;
-  setRoleInput: (val: string) => void;
-  onAddJob: () => void;
+  onOpenAddModal: (mode: 'manual' | 'capture') => void;
   onClearJobs: () => void;
 
   // New Vault Props
@@ -53,6 +44,13 @@ interface CsvSyncSectionProps {
   sheetTabNames?: string[];
   selectedSheetIdx?: number;
   onSheetTabChange?: (idx: number) => void;
+
+  // Auto-confirm settings props
+  autoConfirmEnabled?: boolean;
+  autoConfirmDuration?: number;
+  onToggleAutoConfirm?: (val: boolean) => void;
+  onDurationChange?: (val: number) => void;
+  isMergingSheet?: boolean;
 }
 
 export const CsvSyncSection = ({
@@ -60,22 +58,13 @@ export const CsvSyncSection = ({
   setViewMode,
   showSettings,
   setShowSettings,
-  showAddForm,
-  setShowAddForm,
   urlInput,
   setUrlInput,
   fetching,
   handleSyncJobs,
   handleImportCSVFile,
   onExportCSV,
-  handleCaptureCurrentTab,
-  jobUrlInput,
-  setJobUrlInput,
-  companyInput,
-  setCompanyInput,
-  roleInput,
-  setRoleInput,
-  onAddJob,
+  onOpenAddModal,
   onClearJobs,
   onExportMergeUniversal,
   onImportUniversalVault,
@@ -87,7 +76,12 @@ export const CsvSyncSection = ({
   onExportMergeGoogleSheet,
   sheetTabNames = [],
   selectedSheetIdx = 0,
-  onSheetTabChange
+  onSheetTabChange,
+  autoConfirmEnabled = false,
+  autoConfirmDuration = 30,
+  onToggleAutoConfirm,
+  onDurationChange,
+  isMergingSheet = false
 }: CsvSyncSectionProps) => {
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const moreMenuRef = useRef<HTMLDivElement>(null);
@@ -229,7 +223,7 @@ export const CsvSyncSection = ({
                       <Button
                         size="sm"
                         variant="ghost"
-                        onClick={handleCaptureCurrentTab}
+                        onClick={() => onOpenAddModal('capture')}
                         icon={<Bookmark className="w-3.5 h-3.5" />}
                         className="text-[9px] px-2.5 text-accent-light hover:text-accent"
                         title="Save current tab URL"
@@ -239,98 +233,104 @@ export const CsvSyncSection = ({
                       <Button
                         size="sm"
                         variant="secondary"
-                        onClick={() => {
-                          setJobUrlInput('');
-                          setCompanyInput('');
-                          setRoleInput('');
-                          setShowAddForm(true);
-                        }}
+                        onClick={() => onOpenAddModal('manual')}
                         icon={<Plus className="w-3.5 h-3.5" />}
                         className="text-[9px] px-2.5"
                         title="Add job manually"
                       >
                         Add
                       </Button>
-                    </div>
+                    </div>                    {/* Actions on Right */}
+                    <div className="flex items-center gap-1.5">
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setShowSettings(!showSettings)}
+                        icon={<Settings className="w-3.5 h-3.5" />}
+                        className={`text-[9px] px-2 ${showSettings ? 'text-accent' : 'text-ash hover:text-mist hover:bg-white/5'}`}
+                        title="Application settings"
+                      />
 
-                    {/* ⋯ More Dropdown */}
-                    <div className="relative" ref={moreMenuRef}>
-                      <button
-                        onClick={() => setShowMoreMenu(!showMoreMenu)}
-                        className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[9px] font-bold uppercase tracking-wider transition-all border ${
-                          showMoreMenu
-                            ? 'bg-white/10 border-white/15 text-white'
-                            : 'bg-transparent border-transparent text-ash hover:text-mist hover:bg-white/5'
-                        }`}
-                        title="More actions"
-                      >
-                        <MoreHorizontal className="w-3.5 h-3.5" />
-                        <span>More</span>
-                        <ChevronDown className={`w-2.5 h-2.5 transition-transform ${showMoreMenu ? 'rotate-180' : ''}`} />
-                      </button>
+                      {/* ⋯ More Dropdown */}
+                      <div className="relative" ref={moreMenuRef}>
+                        <button
+                          onClick={() => setShowMoreMenu(!showMoreMenu)}
+                          className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[9px] font-bold uppercase tracking-wider transition-all border ${
+                            showMoreMenu
+                              ? 'bg-white/10 border-white/15 text-white'
+                              : 'bg-transparent border-transparent text-ash hover:text-mist hover:bg-white/5'
+                          }`}
+                          title="More actions"
+                        >
+                          <MoreHorizontal className="w-3.5 h-3.5" />
+                          <span>More</span>
+                          <ChevronDown className={`w-2.5 h-2.5 transition-transform ${showMoreMenu ? 'rotate-180' : ''}`} />
+                        </button>
 
-                      {showMoreMenu && (
-                        <div className="absolute right-0 top-full mt-1.5 w-44 bg-[#0D0D0D] border border-white/10 rounded-xl shadow-2xl z-50 py-1.5 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150">
-                          <button
-                            onClick={() => { document.getElementById('csv-file-input')?.click(); setShowMoreMenu(false); }}
-                            className="w-full flex items-center gap-2.5 px-3.5 py-2 text-[9px] font-semibold uppercase tracking-wider text-ash hover:text-white hover:bg-white/5 transition-colors"
-                          >
-                            <Upload className="w-3.5 h-3.5 text-mist" />
-                            Import CSV
-                          </button>
-                          <button
-                            onClick={() => { document.getElementById('universal-vault-input')?.click(); setShowMoreMenu(false); }}
-                            className="w-full flex items-center gap-2.5 px-3.5 py-2 text-[9px] font-semibold uppercase tracking-wider text-ash hover:text-white hover:bg-white/5 transition-colors"
-                          >
-                            <Upload className="w-3.5 h-3.5 text-accent-light" />
-                            Load Vault
-                          </button>
-                          
-                          <div className="border-t border-white/5 my-1" />
+                        {showMoreMenu && (
+                          <div className="absolute right-0 top-full mt-1.5 w-44 bg-[#0D0D0D] border border-white/10 rounded-xl shadow-2xl z-50 py-1.5 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150">
+                            <button
+                              onClick={() => { document.getElementById('csv-file-input')?.click(); setShowMoreMenu(false); }}
+                              className="w-full flex items-center gap-2.5 px-3.5 py-2 text-[9px] font-semibold uppercase tracking-wider text-ash hover:text-white hover:bg-white/5 transition-colors"
+                            >
+                              <Upload className="w-3.5 h-3.5 text-mist" />
+                              Import CSV
+                            </button>
+                            <button
+                              onClick={() => { document.getElementById('universal-vault-input')?.click(); setShowMoreMenu(false); }}
+                              className="w-full flex items-center gap-2.5 px-3.5 py-2 text-[9px] font-semibold uppercase tracking-wider text-ash hover:text-white hover:bg-white/5 transition-colors"
+                            >
+                              <Upload className="w-3.5 h-3.5 text-accent-light" />
+                              Load Vault
+                            </button>
+                            
+                            <div className="border-t border-white/5 my-1" />
 
-                          <button
-                            onClick={() => { onExportCSV(); setShowMoreMenu(false); }}
-                            className="w-full flex items-center gap-2.5 px-3.5 py-2 text-[9px] font-semibold uppercase tracking-wider text-ash hover:text-white hover:bg-white/5 transition-colors"
-                          >
-                            <Download className="w-3.5 h-3.5 text-mist" />
-                            Export Excel
-                          </button>
-                           <button
-                             onClick={() => { onExportMergeUniversal(null); setShowMoreMenu(false); }}
-                             className="w-full flex items-center gap-2.5 px-3.5 py-2 text-[9px] font-semibold uppercase tracking-wider text-ash hover:text-white hover:bg-white/5 transition-colors"
-                             title="Create a fresh universal vault spreadsheet"
-                           >
-                             <Download className="w-3.5 h-3.5 text-accent-light" />
-                             Create New Vault
-                           </button>
-                           <button
-                             onClick={() => { document.getElementById('merge-vault-picker')?.click(); setShowMoreMenu(false); }}
-                             className="w-full flex items-center gap-2.5 px-3.5 py-2 text-[9px] font-semibold uppercase tracking-wider text-ash hover:text-white hover:bg-white/5 transition-colors"
-                             title="Merge current jobs into an existing universal vault spreadsheet"
-                           >
-                             <Download className="w-3.5 h-3.5 text-pulse-green" />
-                             Merge to Vault
-                           </button>
-                           <button
-                             onClick={() => { onExportMergeGoogleSheet?.(); setShowMoreMenu(false); }}
-                             className="w-full flex items-center gap-2.5 px-3.5 py-2 text-[9px] font-semibold uppercase tracking-wider text-ash hover:text-white hover:bg-white/5 transition-colors"
-                             title="Merge current jobs to your configured Google Sheet"
-                           >
-                             <Database className="w-3.5 h-3.5 text-accent-light" />
-                             Merge to Google Sheet
-                           </button>
+                            <button
+                              onClick={() => { onExportCSV(); setShowMoreMenu(false); }}
+                              className="w-full flex items-center gap-2.5 px-3.5 py-2 text-[9px] font-semibold uppercase tracking-wider text-ash hover:text-white hover:bg-white/5 transition-colors"
+                            >
+                              <Download className="w-3.5 h-3.5 text-mist" />
+                              Export Excel
+                            </button>
+                            <button
+                              onClick={() => { onExportMergeUniversal(null); setShowMoreMenu(false); }}
+                              className="w-full flex items-center gap-2.5 px-3.5 py-2 text-[9px] font-semibold uppercase tracking-wider text-ash hover:text-white hover:bg-white/5 transition-colors"
+                              title="Create a fresh universal vault spreadsheet"
+                            >
+                              <Download className="w-3.5 h-3.5 text-accent-light" />
+                              Create New Vault
+                            </button>
+                            <button
+                              onClick={() => { document.getElementById('merge-vault-picker')?.click(); setShowMoreMenu(false); }}
+                              className="w-full flex items-center gap-2.5 px-3.5 py-2 text-[9px] font-semibold uppercase tracking-wider text-ash hover:text-white hover:bg-white/5 transition-colors"
+                              title="Merge current jobs into an existing universal vault spreadsheet"
+                            >
+                              <Download className="w-3.5 h-3.5 text-pulse-green" />
+                              Merge to Vault
+                            </button>
+                            <button
+                              disabled={isMergingSheet}
+                              onClick={() => { onExportMergeGoogleSheet?.(); setShowMoreMenu(false); }}
+                              className="w-full flex items-center gap-2.5 px-3.5 py-2 text-[9px] font-semibold uppercase tracking-wider text-ash hover:text-white hover:bg-white/5 transition-colors disabled:opacity-50"
+                              title={isMergingSheet ? "Merge in progress..." : "Merge current jobs to your configured Google Sheet"}
+                            >
+                              <Database className="w-3.5 h-3.5 text-accent-light" />
+                              {isMergingSheet ? 'Merging...' : 'Merge to Google Sheet'}
+                            </button>
 
-                          <div className="border-t border-white/5 my-1" />
+                            <div className="border-t border-white/5 my-1" />
 
-                          <button
-                            onClick={() => { onClearJobs(); setShowMoreMenu(false); }}
-                            className="w-full flex items-center gap-2.5 px-3.5 py-2 text-[9px] font-semibold uppercase tracking-wider text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-colors"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                            Wipe All Jobs
-                          </button>
-                        </div>
-                      )}
+                            <button
+                              onClick={() => { onClearJobs(); setShowMoreMenu(false); }}
+                              className="w-full flex items-center gap-2.5 px-3.5 py-2 text-[9px] font-semibold uppercase tracking-wider text-red-400 hover:text-red-300 hover:bg-red-500/10 transition-colors"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                              Wipe All Jobs
+                            </button>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -364,45 +364,87 @@ export const CsvSyncSection = ({
         </div>
       </div>
 
-      {/* Spreadsheet URL Settings Panel */}
-      {viewMode === 'sheet' && showSettings && (
-        <div className="p-4 bg-[#0A0A0A] border border-white/5 rounded-2xl space-y-3 auto-layout-transition">
-          <div className="space-y-1">
-            <h4 className="text-[10px] font-bold uppercase tracking-widest text-accent-light">Google Spreadsheet URL</h4>
-            <p className="text-[9px] text-muted">Enter the shared link. Ensure Anyone with Link can View is enabled in Google Sheets.</p>
-          </div>
-          <div className="flex gap-2">
-            <input
-              type="text"
-              placeholder="https://docs.google.com/spreadsheets/d/.../edit?usp=sharing"
-              className="flex-1 px-4 py-2.5 bg-black border border-white/5 rounded-xl text-xs text-white placeholder:text-muted/20 focus:outline-none focus:border-accent/40"
-              value={urlInput}
-              onChange={(e) => setUrlInput(e.target.value)}
-            />
-            <Button
-              size="sm"
-              variant="primary"
-              onClick={handleSyncJobs}
-              isLoading={fetching}
-              className="text-[10px]"
-            >
-              Save & Fetch
-            </Button>
+      {/* Settings Panel */}
+      {showSettings && (
+        <div className="p-4 bg-[#0A0A0A] border border-white/5 rounded-2xl space-y-4 auto-layout-transition">
+          {/* General Auto-Confirm Settings (available in both modes) */}
+          <div className="space-y-3 pb-3 border-b border-white/5">
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <h4 className="text-[10px] font-bold uppercase tracking-widest text-accent-light">Auto-Confirm Applied</h4>
+                <p className="text-[8px] text-ash">Automatically mark a job as applied after opening its link.</p>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer select-none">
+                <input 
+                  type="checkbox" 
+                  checked={autoConfirmEnabled} 
+                  onChange={(e) => onToggleAutoConfirm?.(e.target.checked)}
+                  className="sr-only peer" 
+                />
+                <div className="w-7 h-4 bg-void border border-graphite rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-ash peer-checked:after:bg-accent after:rounded-full after:h-2.5 after:w-2.5 after:transition-all peer-checked:bg-accent/10 peer-checked:border-accent/30"></div>
+              </label>
+            </div>
+
+            {autoConfirmEnabled && (
+              <div className="space-y-1.5 animate-in fade-in slide-in-from-top-1 duration-200">
+                <div className="flex justify-between text-[8px] font-bold uppercase tracking-wider text-ash">
+                  <span>Countdown Duration:</span>
+                  <span className="text-accent">{autoConfirmDuration} seconds</span>
+                </div>
+                <input 
+                  type="range" 
+                  min="10" 
+                  max="60" 
+                  step="5"
+                  value={autoConfirmDuration} 
+                  onChange={(e) => onDurationChange?.(Number(e.target.value))}
+                  className="w-full h-1 bg-void rounded-lg appearance-none cursor-pointer accent-accent"
+                />
+              </div>
+            )}
           </div>
 
-          <div className="space-y-1 pt-3 border-t border-white/5">
-            <h4 className="text-[10px] font-bold uppercase tracking-widest text-accent-light">Google Web App URL (Apps Script)</h4>
-            <p className="text-[9px] text-muted">Enter the deployed Google Apps Script Web App URL to enable writing/merging.</p>
-          </div>
-          <div className="flex gap-2">
-            <input
-              type="text"
-              placeholder="https://script.google.com/macros/s/.../exec"
-              className="flex-1 px-4 py-2.5 bg-black border border-white/5 rounded-xl text-xs text-white placeholder:text-muted/20 focus:outline-none focus:border-accent/40"
-              value={googleWebAppUrl}
-              onChange={(e) => setGoogleWebAppUrl?.(e.target.value)}
-            />
-          </div>
+          {/* Spreadsheet Settings (only in Sheet mode) */}
+          {viewMode === 'sheet' && (
+            <div className="space-y-4 pt-1">
+              <div className="space-y-1">
+                <h4 className="text-[10px] font-bold uppercase tracking-widest text-accent-light">Google Spreadsheet URL</h4>
+                <p className="text-[9px] text-muted">Enter the shared link. Ensure Anyone with Link can View is enabled in Google Sheets.</p>
+              </div>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="https://docs.google.com/spreadsheets/d/.../edit?usp=sharing"
+                  className="flex-1 px-4 py-2.5 bg-black border border-white/5 rounded-xl text-xs text-white placeholder:text-muted/20 focus:outline-none focus:border-accent/40"
+                  value={urlInput}
+                  onChange={(e) => setUrlInput(e.target.value)}
+                />
+                <Button
+                  size="sm"
+                  variant="primary"
+                  onClick={handleSyncJobs}
+                  isLoading={fetching}
+                  className="text-[10px]"
+                >
+                  Save & Fetch
+                </Button>
+              </div>
+
+              <div className="space-y-1 pt-3 border-t border-white/5">
+                <h4 className="text-[10px] font-bold uppercase tracking-widest text-accent-light">Google Web App URL (Apps Script)</h4>
+                <p className="text-[9px] text-muted">Enter the deployed Google Apps Script Web App URL to enable writing/merging.</p>
+              </div>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="https://script.google.com/macros/s/.../exec"
+                  className="flex-1 px-4 py-2.5 bg-black border border-white/5 rounded-xl text-xs text-white placeholder:text-muted/20 focus:outline-none focus:border-accent/40"
+                  value={googleWebAppUrl}
+                  onChange={(e) => setGoogleWebAppUrl?.(e.target.value)}
+                />
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -426,68 +468,6 @@ export const CsvSyncSection = ({
             ))}
           </select>
         </div>
-      )}
-
-      {/* Local Add Form Panel */}
-      {viewMode === 'local' && showAddForm && (
-        <div className="p-4 bg-[#0A0A0A] border border-white/5 rounded-2xl space-y-3.5 auto-layout-transition">
-          <div className="flex items-center justify-between border-b border-white/5 pb-2">
-            <h4 className="text-[10px] font-bold uppercase tracking-widest text-accent-light">Save Job Application URL</h4>
-            <button 
-              onClick={() => setShowAddForm(false)} 
-              className="p-1 rounded-md hover:bg-white/5 text-ash hover:text-mist transition-colors"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
-          </div>
-          <div className="space-y-3">
-            <div className="space-y-1">
-              <label className="text-[8px] font-bold uppercase tracking-wider text-ash">Job URL</label>
-              <input
-                type="text"
-                placeholder="https://..."
-                className="w-full px-3.5 py-2 bg-black border border-white/5 rounded-xl text-xs text-white placeholder:text-muted/20 focus:outline-none focus:border-accent/40"
-                value={jobUrlInput}
-                onChange={(e) => setJobUrlInput(e.target.value)}
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-3.5">
-              <div className="space-y-1">
-                <label className="text-[8px] font-bold uppercase tracking-wider text-ash">Company</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Google"
-                  className="w-full px-3.5 py-2 bg-black border border-white/5 rounded-xl text-xs text-white placeholder:text-muted/20 focus:outline-none focus:border-accent/40"
-                  value={companyInput}
-                  onChange={(e) => setCompanyInput(e.target.value)}
-                />
-              </div>
-              <div className="space-y-1">
-                <label className="text-[8px] font-bold uppercase tracking-wider text-ash">Role / Position</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Senior Frontend Developer"
-                  className="w-full px-3.5 py-2 bg-black border border-white/5 rounded-xl text-xs text-white placeholder:text-muted/20 focus:outline-none focus:border-accent/40"
-                  value={roleInput}
-                  onChange={(e) => setRoleInput(e.target.value)}
-                />
-              </div>
-            </div>
-          </div>
-          <div className="flex gap-2 justify-end pt-1">
-            <Button size="sm" variant="ghost" onClick={() => setShowAddForm(false)}>
-              Cancel
-            </Button>
-            <Button
-              size="sm"
-              variant="primary"
-              onClick={onAddJob}
-            >
-              Save Application
-            </Button>
-          </div>
-        </div>
-      )}
-    </div>
+      )}    </div>
   );
 };

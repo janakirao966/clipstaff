@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Job, VaultJob } from '../types';
 import * as db from '../lib/db';
-import { extractCompanyFromUrl, extractRoleFromUrl, getJobId, normalizeUrl } from '../lib/extractor';
+import { extractCompanyFromUrl, extractRoleFromUrl, getJobId, normalizeUrl, sanitizeProfileName } from '../lib/extractor';
 import { toast } from 'sonner';
 import { useStore } from '../store/useStore';
 
@@ -14,6 +14,7 @@ export const useJobsDb = () => {
   const [vaultProfiles, setVaultProfiles] = useState<string[]>([]);
   const [selectedVaultProfile, setSelectedVaultProfile] = useState<string>('');
   const [vaultJobs, setVaultJobs] = useState<VaultJob[]>([]);
+  const [isMergingSheet, setIsMergingSheet] = useState(false);
 
   // Persist setter helper
   const updateSelectedVaultProfile = useCallback((profile: string) => {
@@ -143,16 +144,20 @@ export const useJobsDb = () => {
     }
   }, [loadJobs]);
 
-  const importJobs = useCallback(async (sheetJobs: Job[]) => {
+  const importJobs = useCallback(async (
+    sheetJobs: Job[],
+    onProgress?: (progress: { current: number; total: number; successCount: number; failedCount: number }) => void
+  ) => {
     try {
       const sanitized = sheetJobs.map(job => ({ ...job, url: normalizeUrl(job.url) }));
-      await db.importJobsBulk(sanitized);
+      await db.importJobsBulk(sanitized, onProgress);
       await loadJobs();
       if (typeof chrome !== 'undefined' && chrome.runtime) {
         chrome.runtime.sendMessage({ type: 'JOB_DATABASE_CHANGED' });
       }
     } catch (e) {
       console.error('Failed to bulk import jobs:', e);
+      throw e;
     }
   }, [loadJobs]);
 
@@ -258,25 +263,17 @@ export const useJobsDb = () => {
       await loadVaultProfiles();
 
       // Filter own sheet out of notification count
-      const activeSanitized = (activeProfile?.full_name || '')
-        .replace(/[\\\/?:*\[\]]/g, '_')
-        .slice(0, 31)
-        .trim()
-        .toLowerCase();
+      const activeSanitized = sanitizeProfileName(activeProfile?.full_name).toLowerCase();
 
       const hasOwnSheet = workbook.worksheets.some(sheet => {
         if (sheet.name === '__meta__') return false;
-        const nameSanitized = sheet.name.replace(/[\\\/?:*\[\]]/g, '_').slice(0, 31).trim().toLowerCase();
+        const nameSanitized = sanitizeProfileName(sheet.name).toLowerCase();
         return nameSanitized === activeSanitized;
       });
 
       const otherProfilesCount = hasOwnSheet ? Math.max(0, validSheetsCount - 1) : validSheetsCount;
       const otherJobsCount = allVaultJobs.filter(job => {
-        const jobProfileSanitized = job.profileName
-          .replace(/[\\\/?:*\[\]]/g, '_')
-          .slice(0, 31)
-          .trim()
-          .toLowerCase();
+        const jobProfileSanitized = sanitizeProfileName(job.profileName).toLowerCase();
         return jobProfileSanitized !== activeSanitized;
       }).length;
 
@@ -303,10 +300,7 @@ export const useJobsDb = () => {
 
     try {
       // 1. Sanitize Profile/Sheet Name
-      const sanitizedName = profileName
-        .replace(/[\\\/?:*\[\]]/g, '_')
-        .slice(0, 31)
-        .trim() || 'Default_Profile';
+      const sanitizedName = sanitizeProfileName(profileName);
 
       const ExcelJS = await import('exceljs');
       const workbook = new ExcelJS.Workbook();
@@ -477,6 +471,7 @@ export const useJobsDb = () => {
     profileName: string,
     currentJobs: Job[]
   ) => {
+    if (isMergingSheet) return;
     if (!webAppUrl.trim()) {
       toast.error('Google Web App URL Required', {
         description: 'Please configure your Google Web App URL in the settings.'
@@ -484,23 +479,26 @@ export const useJobsDb = () => {
       return;
     }
 
+    setIsMergingSheet(true);
     const loadingToast = toast.loading('Merging to Google Sheet...');
 
     try {
       // Sanitize Profile Name
-      const sanitizedName = profileName
-        .replace(/[\\\/?:*\[\]]/g, '_')
-        .slice(0, 31)
-        .trim() || 'Default_Profile';
+      const sanitizedName = sanitizeProfileName(profileName);
 
-      // Send to background task to make the CORS POST request to Google Script
-      const response = await new Promise<{ success: boolean; data?: any; error?: string }>((resolve) => {
+      // Send to background task to make the CORS POST request with 30s timeout
+      const timeoutPromise = new Promise<{ success: boolean; data?: any; error?: string }>((resolve) => {
+        setTimeout(() => resolve({ success: false, error: 'Google Sheet merge request timed out. Please check your web app URL and connection.' }), 30000);
+      });
+
+      const sendPromise = new Promise<{ success: boolean; data?: any; error?: string }>((resolve) => {
         if (typeof chrome !== 'undefined' && chrome.runtime) {
           chrome.runtime.sendMessage(
             { 
               type: 'POST_API', 
               url: webAppUrl.trim(),
               body: {
+                action: 'batch_upload',
                 profileName: sanitizedName,
                 jobs: currentJobs
               }
@@ -518,6 +516,8 @@ export const useJobsDb = () => {
         }
       });
 
+      const response = await Promise.race([sendPromise, timeoutPromise]);
+
       toast.dismiss(loadingToast);
 
       if (response.success) {
@@ -534,8 +534,10 @@ export const useJobsDb = () => {
       toast.error('Google Sheet Merge Failed', {
         description: err.message || 'Error occurred during network request.'
       });
+    } finally {
+      setIsMergingSheet(false);
     }
-  }, []);
+  }, [isMergingSheet]);
 
   const getActiveTabInfo = useCallback(async (): Promise<{ url: string; title: string } | null> => {
     if (typeof chrome === 'undefined' || !chrome.tabs) return null;
@@ -569,6 +571,27 @@ export const useJobsDb = () => {
     };
   }, [loadJobs]);
 
+  const deleteVaultJob = useCallback(async (id: string) => {
+    try {
+      await db.deleteUniversalJobById(id);
+      await loadVaultJobs();
+      await loadVaultProfiles();
+    } catch (e) {
+      console.error('Failed to delete universal vault job:', e);
+      toast.error('Failed to delete job from vault');
+    }
+  }, [loadVaultJobs, loadVaultProfiles]);
+
+  const updateVaultJobStatus = useCallback(async (url: string, status: Job['status']) => {
+    try {
+      await db.updateUniversalJobStatusByUrl(url, status);
+      await loadVaultJobs();
+    } catch (e) {
+      console.error('Failed to update universal vault job status:', e);
+      toast.error('Failed to update job status in vault');
+    }
+  }, [loadVaultJobs]);
+
   // Initial load
   useEffect(() => {
     loadJobs();
@@ -591,6 +614,9 @@ export const useJobsDb = () => {
     vaultJobs,
     importUniversalVault,
     exportMergeUniversal,
-    exportMergeGoogleSheet
+    exportMergeGoogleSheet,
+    isMergingSheet,
+    deleteVaultJob,
+    updateVaultJobStatus
   };
 };

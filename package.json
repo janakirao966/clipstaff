@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.42.4",
+    "@types/react-window": "^1.8.8",
     "docx": "^9.6.1",
     "exceljs": "^4.4.0",
     "file-saver": "^2.0.5",
@@ -20,6 +21,7 @@
     "lucide-react": "^0.372.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
+    "react-window": "^2.2.7",
     "sonner": "^2.0.7",
     "zustand": "^4.5.7"
   },

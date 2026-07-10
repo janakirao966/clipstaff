@@ -35,11 +35,13 @@ interface JobSlice {
   jobs: Job[];
   sheetTabs: SheetTab[];
   selectedSheetIdx: number;
+  syncStatus: 'synced' | 'syncing' | 'error';
   setSpreadsheetUrl: (url: string) => void;
   setGoogleWebAppUrl: (url: string) => void;
   setJobs: (jobs: Job[]) => void;
   setSheetTabs: (tabs: SheetTab[]) => void;
   setSelectedSheetIdx: (idx: number) => void;
+  setSyncStatus: (status: 'synced' | 'syncing' | 'error') => void;
   updateJobStatus: (url: string, status: Job['status']) => void;
 }
 
@@ -148,11 +150,13 @@ export const useStore = create<ProfileSlice & SnippetSlice & JobSlice & Eligibil
       jobs: [],
       sheetTabs: [],
       selectedSheetIdx: 0,
+      syncStatus: 'synced',
       setSpreadsheetUrl: (spreadsheetUrl) => set({ spreadsheetUrl }),
       setGoogleWebAppUrl: (googleWebAppUrl) => set({ googleWebAppUrl }),
       setJobs: (jobs) => set({ jobs }),
       setSheetTabs: (sheetTabs) => set({ sheetTabs }),
       setSelectedSheetIdx: (selectedSheetIdx) => set({ selectedSheetIdx }),
+      setSyncStatus: (syncStatus) => set({ syncStatus }),
       updateJobStatus: (url, status) => set((state) => {
         const updatedJobs = state.jobs.map((job) => job.url === url ? { ...job, status } : job);
         const updatedTabs = state.sheetTabs.map((tab) => ({
@@ -199,6 +203,7 @@ export const useStore = create<ProfileSlice & SnippetSlice & JobSlice & Eligibil
         jobs: [],
         sheetTabs: [],
         selectedSheetIdx: 0,
+        syncStatus: 'synced',
         geminiApiKey: '',
         checkerJdText: '',
         lastEligibilityResult: null,
@@ -233,6 +238,7 @@ export const useStore = create<ProfileSlice & SnippetSlice & JobSlice & Eligibil
         jobs: state.jobs,
         sheetTabs: state.sheetTabs,
         selectedSheetIdx: state.selectedSheetIdx,
+        syncStatus: state.syncStatus,
         geminiApiKey: state.geminiApiKey,
         checkerJdText: state.checkerJdText,
         lastEligibilityResult: state.lastEligibilityResult
@@ -240,3 +246,11 @@ export const useStore = create<ProfileSlice & SnippetSlice & JobSlice & Eligibil
     }
   )
 );
+
+if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage) {
+  chrome.runtime.onMessage.addListener((message) => {
+    if (message.type === 'SYNC_STATUS_CHANGED') {
+      useStore.getState().setSyncStatus(message.status);
+    }
+  });
+}

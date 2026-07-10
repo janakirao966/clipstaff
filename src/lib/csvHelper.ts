@@ -1,6 +1,6 @@
 import { Job } from '../types';
 import { toast } from 'sonner';
-import { extractCompanyFromUrl, extractRoleFromUrl, getJobId } from './extractor';
+import { extractCompanyFromUrl, extractRoleFromUrl, getJobId, normalizeUrl, sanitizeProfileName, compareUrls } from './extractor';
 
 // Robust CSV Parser (RFC 4180 compliant)
 export function parseCSV(text: string): string[][] {
@@ -95,7 +95,7 @@ export function exportToCSV(jobs: Job[], profileName?: string | null) {
   const link = document.createElement('a');
   link.setAttribute('href', url);
 
-  const prefix = profileName ? profileName.replace(/[\\\/?:*\[\]\s]/g, '_').trim() : 'clipstaff';
+  const prefix = profileName ? sanitizeProfileName(profileName) : 'clipstaff';
   const dateStr = new Date().toISOString().split('T')[0];
   link.setAttribute('download', `${prefix}_applications_${dateStr}.csv`);
 
@@ -244,7 +244,7 @@ export async function exportToExcel(jobs: Job[], profileName?: string | null) {
     const downloadLink = document.createElement('a');
     downloadLink.setAttribute('href', fileUrl);
 
-    const prefix = profileName ? profileName.replace(/[\\\/?:*\[\]\s]/g, '_').trim() : 'clipstaff';
+    const prefix = profileName ? sanitizeProfileName(profileName) : 'clipstaff';
     const dateStr = new Date().toISOString().split('T')[0];
     downloadLink.setAttribute('download', `${prefix}_applications_${dateStr}.xlsx`);
 
@@ -333,8 +333,10 @@ export function parseRowsToJobs(rows: string[][], existingJobs?: Job[]): Job[] {
     const row = rows[i];
     if (!row || row.length === 0) continue;
 
-    const url = (row[urlIdx] || '').trim();
-    if (!url || (!url.startsWith('http') && !url.includes('.'))) continue;
+    const rawUrl = (row[urlIdx] || '').trim();
+    if (!rawUrl || (!rawUrl.startsWith('http') && !rawUrl.includes('.'))) continue;
+
+    const url = normalizeUrl(rawUrl);
 
     let company = '';
     if (companyIdx !== -1 && companyIdx !== urlIdx) {
@@ -366,7 +368,7 @@ export function parseRowsToJobs(rows: string[][], existingJobs?: Job[]): Job[] {
 
     // Merge with existing job status if available
     if (existingJobs) {
-      const existingJob = existingJobs.find(j => j.url === url);
+      const existingJob = existingJobs.find(j => compareUrls(j.url, url));
       if (existingJob) {
         status = existingJob.status;
       }

@@ -86,53 +86,109 @@ export function extractRoleFromUrl(urlStr: string): string {
   }
 }
 
+/**
+ * Normalizes a URL string by ensuring a valid protocol, lowercasing the hostname,
+ * removing trailing slashes from the path (except for the domain root), stripping
+ * fragments/hashes, removing all common and custom tracking parameters, and sorting
+ * the remaining query parameters alphabetically.
+ *
+ * This ensures that identical job listings with different tracking tokens are matched
+ * consistently.
+ */
 export function normalizeUrl(urlStr: string): string {
   if (!urlStr) return '';
   try {
-    const cleanUrl = urlStr.trim();
+    let cleanUrl = urlStr.trim();
+    // Ensure protocol is present
+    if (!/^[a-zA-Z]+:\/\//.test(cleanUrl)) {
+      cleanUrl = 'https://' + cleanUrl;
+    }
     const url = new URL(cleanUrl);
     
-    // Normalize hostname
+    // Normalize hostname to lowercase
     const host = url.hostname.toLowerCase();
     
-    // Normalize pathname (strip trailing slash if it's not a root slash)
+    // Normalize pathname: strip trailing slash if it's not the root path
     let path = url.pathname;
     if (path.length > 1 && path.endsWith('/')) {
       path = path.slice(0, -1);
     }
     
-    // Filter out common tracking query parameters
-    const trackingParams = [
-      'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content',
-      'ref', 'source', 'origin', 'fbclid', 'gclid', 'msclkid', 'spm', 'clicks'
+    // Strip fragments/hash (visual anchors on the page)
+    url.hash = '';
+    
+    // Tracking parameters check patterns (covers common UTM and marketing parameters)
+    const trackingPatterns = [
+      /^utm_/i,
+      /^ref/i,
+      /^source/i,
+      /^origin/i,
+      /^fbclid/i,
+      /^gclid/i,
+      /^msclkid/i,
+      /^spm/i,
+      /^clicks/i,
+      /^_ga/i,
+      /^_gl/i,
+      /^mc_eid/i,
+      /^campaignid/i,
+      /^adgroupid/i,
+      /^adid/i,
+      /^gclsrc/i,
+      /^otn/i,
+      /^ot/i
     ];
     
-    const searchParams = new URLSearchParams();
+    // Filter and sort query parameters alphabetically
+    const paramsList: { key: string; value: string }[] = [];
     url.searchParams.forEach((value, key) => {
-      if (!trackingParams.includes(key.toLowerCase())) {
-        searchParams.set(key, value);
+      const keyLower = key.toLowerCase();
+      const isTracking = trackingPatterns.some(pattern => pattern.test(keyLower));
+      if (!isTracking) {
+        paramsList.push({ key, value });
       }
     });
     
+    paramsList.sort((a, b) => a.key.localeCompare(b.key));
+    
+    const searchParams = new URLSearchParams();
+    paramsList.forEach(p => searchParams.set(p.key, p.value));
     const search = searchParams.toString();
     
-    // Return normalized format
     return `${url.protocol}//${host}${path}${search ? '?' + search : ''}`;
   } catch (e) {
     return urlStr.trim();
   }
 }
 
-export const getJobId = (url: string, index: number = 0): string => {
-  const normUrl = normalizeUrl(url);
-  let hash = 0;
-  for (let i = 0; i < normUrl.length; i++) {
-    const char = normUrl.charCodeAt(i);
-    hash = (hash << 5) - hash + char;
-    hash = hash & hash; // Convert to 32bit integer
+/**
+ * Generates a deterministic 32-bit FNV-1a hash of a normalized URL.
+ * The same URL will ALWAYS generate the same ID.
+ */
+function fnv1a(str: string): number {
+  let hash = 2166136261;
+  for (let i = 0; i < str.length; i++) {
+    hash ^= str.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
   }
-  return `job-${Math.abs(hash)}-${index || Math.floor(Math.random() * 1000)}`;
+  return hash >>> 0;
+}
+
+export const getJobId = (url: string, index?: number): string => {
+  const normUrl = normalizeUrl(url);
+  const hashVal = fnv1a(normUrl);
+  if (index !== undefined && index !== null && index !== 0) {
+    return `job-${hashVal}-idx-${index}`;
+  }
+  return `job-${hashVal}`;
 };
+
+/**
+ * Compares two URLs by normalizing both and returning whether they match.
+ */
+export function compareUrls(url1: string, url2: string): boolean {
+  return normalizeUrl(url1) === normalizeUrl(url2);
+}
 
 export function isValidJobUrl(urlStr: string): boolean {
   if (!urlStr) return false;
@@ -207,4 +263,15 @@ export function isValidJobUrl(urlStr: string): boolean {
     return false;
   }
 }
+
+/**
+ * Sanitizes a profile name to be safe for sheet tabs and file paths.
+ */
+export const sanitizeProfileName = (name: string | null | undefined): string => {
+  if (!name) return 'Default_Profile';
+  return name
+    .replace(/[\\\/?:*\[\]]/g, '_')
+    .slice(0, 31)
+    .trim() || 'Default_Profile';
+};
 

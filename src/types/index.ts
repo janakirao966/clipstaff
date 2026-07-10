@@ -67,6 +67,11 @@ export interface Job {
   url: string;
   dateAdded?: string;
   status: 'not_applied' | 'applied' | 'skipped';
+  syncState?: 'pending' | 'synced' | 'error';
+  lastSyncedAt?: number;
+  retryCount?: number;
+  lastRetryAt?: number;
+  version?: number;
 }
 
 export interface VaultJob {

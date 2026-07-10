@@ -98,3 +98,6 @@ export const Button = ({
     </button>
   );
 };
+
+export { ErrorBoundary } from './ErrorBoundary';
+

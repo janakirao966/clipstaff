@@ -21,7 +21,7 @@ import {
 } from 'lucide-react'
 import { useStore } from './store/useStore'
 import { syncShortcutsToStorage } from './lib/sync'
-import { Button } from './components/ui'
+import { Button, ErrorBoundary } from './components/ui'
 
 // ClipStaff Logo Component — uses the actual project icon
 const ClipStaffLogo = ({ size = 32, className = "" }: { size?: number; className?: string }) => (
@@ -37,7 +37,7 @@ const ClipStaffLogo = ({ size = 32, className = "" }: { size?: number; className
 
 function MainContent() {
   const { user, signOut } = useAuth();
-  const { snippets, dynamicShortcuts, activeProfile, profileTriggers } = useStore();
+  const { snippets, dynamicShortcuts, activeProfile, profileTriggers, syncStatus } = useStore();
   const { fetchProfile } = useProfiles();
   const [activeTab, setActiveTab] = React.useState<'vault' | 'resume' | 'jobs' | 'match'>('vault');
   const [profileOpen, setProfileOpen] = React.useState(false);
@@ -226,10 +226,12 @@ function MainContent() {
       {/* Main Container */}
       <main className="flex-1 overflow-y-auto p-4 custom-scrollbar">
         <div className="max-w-2xl mx-auto h-full">
-          {activeTab === 'vault' && <UnifiedVault onAutofill={handleAutofillPage} />}
-          {activeTab === 'resume' && <ResumeBuilder />}
-          {activeTab === 'jobs' && <JobList />}
-          {activeTab === 'match' && <EligibilityChecker />}
+          <ErrorBoundary>
+            {activeTab === 'vault' && <UnifiedVault onAutofill={handleAutofillPage} />}
+            {activeTab === 'resume' && <ResumeBuilder />}
+            {activeTab === 'jobs' && <JobList />}
+            {activeTab === 'match' && <EligibilityChecker />}
+          </ErrorBoundary>
         </div>
       </main>
 
@@ -237,8 +239,20 @@ function MainContent() {
       <footer className="p-4 bg-carbon border-t border-graphite">
         <div className="flex items-center justify-between p-3 bg-void rounded-md border border-graphite">
           <div className="flex items-center gap-3">
-            <div className="w-1.5 h-1.5 bg-pulse-green rounded-full animate-pulse" />
-            <div className="text-[10px] font-medium text-ash uppercase tracking-wider">System Ready</div>
+            <div className={`w-1.5 h-1.5 rounded-full ${
+              syncStatus === 'syncing' 
+                ? 'bg-yellow-500 animate-pulse' 
+                : syncStatus === 'error' 
+                ? 'bg-coral-red animate-bounce' 
+                : 'bg-pulse-green animate-pulse'
+            }`} />
+            <div className="text-[10px] font-medium text-ash uppercase tracking-wider">
+              {syncStatus === 'syncing' 
+                ? 'Syncing...' 
+                : syncStatus === 'error' 
+                ? 'Sync Error' 
+                : 'System Ready'}
+            </div>
           </div>
           
           <Button 

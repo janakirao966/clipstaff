@@ -186,13 +186,18 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return true;
   }
   if (message.type === 'SHOW_PAGE_TOAST') {
-    showPageToast(message.message);
+    showPageToast(message.message, message.isError);
+    sendResponse({ status: 'done' });
+    return true;
+  }
+  if (message.type === 'UPDATE_SAVE_SHORTCUT') {
+    parsedShortcut = parseShortcut(message.shortcut);
     sendResponse({ status: 'done' });
     return true;
   }
 });
 
-function showPageToast(message: string) {
+function showPageToast(message: string, isError: boolean = false) {
   const existing = document.getElementById('clipstaff-page-toast');
   if (existing) {
     existing.remove();
@@ -204,15 +209,15 @@ function showPageToast(message: string) {
     position: fixed !important;
     bottom: 24px !important;
     right: 24px !important;
-    background: #0A0A0A !important;
+    background: ${isError ? '#1E1B1B' : '#0A0A0A'} !important;
     color: #F8FAFC !important;
-    border: 1px solid rgba(255, 255, 255, 0.1) !important;
+    border: 1px solid ${isError ? 'rgba(239, 68, 68, 0.4)' : 'rgba(255, 255, 255, 0.1)'} !important;
     border-radius: 8px !important;
     padding: 12px 18px !important;
     font-size: 13px !important;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
     font-weight: 500 !important;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5), 0 0 15px rgba(0, 242, 254, 0.08) !important;
+    box-shadow: ${isError ? '0 10px 30px rgba(239, 68, 68, 0.1), 0 0 15px rgba(239, 68, 68, 0.05)' : '0 10px 30px rgba(0, 0, 0, 0.5), 0 0 15px rgba(0, 242, 254, 0.08)'} !important;
     z-index: 2147483647 !important;
     display: flex !important;
     align-items: center !important;
@@ -223,13 +228,13 @@ function showPageToast(message: string) {
     transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease !important;
   `;
 
-  const checkIcon = document.createElement('span');
-  checkIcon.innerHTML = '✓';
-  checkIcon.style.cssText = `
-    color: #00F2FE !important;
+  const iconEl = document.createElement('span');
+  iconEl.innerHTML = isError ? '✗' : '✓';
+  iconEl.style.cssText = `
+    color: ${isError ? '#EF4444' : '#00F2FE'} !important;
     font-weight: bold !important;
   `;
-  toastEl.appendChild(checkIcon);
+  toastEl.appendChild(iconEl);
 
   const textEl = document.createElement('span');
   textEl.innerText = message;
@@ -250,7 +255,7 @@ function showPageToast(message: string) {
         toastEl.remove();
       }
     }, 300);
-  }, 3000);
+  }, isError ? 5000 : 3000);
 }
 
 function injectText(text: string) {
@@ -604,3 +609,97 @@ async function handleInstantExpansion(element: HTMLElement) {
 
 // --- Spotlight Command Bar HUD Overlay ---
 initSpotlight(() => shortcutCache);
+
+// --- Custom Shortcut Handler for Saving Current Job ---
+const isMac = /Mac|iPod|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+
+interface ParsedShortcut {
+  ctrl: boolean;
+  shift: boolean;
+  alt: boolean;
+  meta: boolean;
+  keyChar: string;
+}
+
+let parsedShortcut = parseShortcut(isMac ? 'Cmd+Shift+X' : 'Ctrl+Shift+X'); // Initial default fallback
+let isShortcutListenerRegistered = false;
+
+function parseShortcut(shortcutStr: string): ParsedShortcut {
+  if (!shortcutStr || !shortcutStr.includes('+')) {
+    return parseShortcut(isMac ? 'Cmd+Shift+X' : 'Ctrl+Shift+X');
+  }
+  const parts = shortcutStr.split('+').map(p => p.trim().toLowerCase());
+  
+  const needsCtrl = parts.includes('ctrl') || parts.includes('control');
+  const needsMeta = parts.includes('meta') || parts.includes('⌘') || parts.includes('cmd') || parts.includes('command') || parts.includes('macctrl');
+  
+  // Handle Mac Command key: if the shortcut has ctrl or cmd, map to meta on Mac, ctrl on Windows/Linux
+  const hasCmdOrCtrlNeed = needsCtrl || needsMeta;
+  const ctrl = isMac ? false : hasCmdOrCtrlNeed;
+  const meta = isMac ? hasCmdOrCtrlNeed : false;
+  
+  const shift = parts.includes('shift');
+  const alt = parts.includes('alt') || parts.includes('option');
+  
+  const keyChar = parts.find(p => !['ctrl', 'control', 'shift', 'alt', 'option', 'meta', '⌘', 'cmd', 'command', 'macctrl'].includes(p)) || '';
+  
+  return { ctrl, shift, alt, meta, keyChar };
+}
+
+function registerShortcutListener() {
+  if (isShortcutListenerRegistered) return;
+  
+  document.addEventListener('keydown', (event) => {
+    const { ctrl, shift, alt, meta, keyChar } = parsedShortcut;
+    if (!keyChar) return;
+
+    // Direct modifier checks
+    const modifiersMatch = 
+      (ctrl === event.ctrlKey) &&
+      (shift === event.shiftKey) &&
+      (alt === event.altKey) &&
+      (meta === event.metaKey);
+      
+    // Match the key code or key character
+    const keyMatch = event.key.toLowerCase() === keyChar || event.code.toLowerCase() === `key${keyChar}`;
+    
+    if (modifiersMatch && keyMatch) {
+      event.preventDefault();
+      event.stopPropagation();
+      
+      chrome.runtime.sendMessage({
+        type: 'SAVE_CURRENT_JOB_VIA_SHORTCUT',
+        url: window.location.href
+      }).catch((err) => {
+        console.warn('ClipStaff: Failed to send SAVE_CURRENT_JOB_VIA_SHORTCUT message:', err);
+      });
+    }
+  }, true); // capturing phase for high priority execution
+  
+  isShortcutListenerRegistered = true;
+}
+
+// Load shortcut from storage immediately
+try {
+  chrome.storage.local.get(['activeSaveShortcut'], (res) => {
+    if (res && res.activeSaveShortcut) {
+      parsedShortcut = parseShortcut(res.activeSaveShortcut);
+    }
+    registerShortcutListener();
+  });
+} catch (e) {
+  console.log('Failed to fetch activeSaveShortcut:', e);
+  registerShortcutListener(); // Ensure listener still runs even if storage fails
+}
+
+// Update shortcut dynamically if changed in storage
+try {
+  chrome.storage.onChanged.addListener((changes) => {
+    if (changes.activeSaveShortcut && changes.activeSaveShortcut.newValue) {
+      parsedShortcut = parseShortcut(changes.activeSaveShortcut.newValue);
+    }
+  });
+} catch (e) {
+  console.log('Failed to register storage change listener:', e);
+}
+

@@ -29,6 +29,7 @@
   "host_permissions": [
     "https://*/*",
     "http://*/*",
+    "file://*/*",
     "https://docs.google.com/*",
     "https://*.googleusercontent.com/*"
   ],
@@ -46,7 +47,7 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://*/*", "http://*/*"],
+      "matches": ["https://*/*", "http://*/*", "file://*/*"],
       "js": ["src/content.ts"],
       "run_at": "document_idle",
       "all_frames": true
