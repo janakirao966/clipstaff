@@ -95,7 +95,7 @@ export const ConfirmAppliedModal = ({
             className="text-[10px] w-28 py-2.5 hover:bg-white/5"
             title="Press Esc to cancel"
           >
-            No, Not Yet (Esc)
+            No, Not Yet
           </Button>
           <Button
             variant="primary"
@@ -103,7 +103,7 @@ export const ConfirmAppliedModal = ({
             className="text-[10px] w-28 py-2.5 bg-pulse-green hover:bg-pulse-green/90 border border-pulse-green/20 text-white shadow-pulse-green/25 shadow-lg"
             title="Press Enter to confirm"
           >
-            Yes, Applied (↵)
+            Yes, Applied
           </Button>
         </div>
       </div>
