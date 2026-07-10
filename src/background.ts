@@ -82,21 +82,25 @@ chrome.runtime.onInstalled.addListener(() => {
   });
 
   // Setup periodic sync alarms (Phase 1.4)
-  chrome.alarms.create("keep-alive", { periodInMinutes: 4 });
-  chrome.alarms.create("sheet-poll-periodic", { periodInMinutes: 15 });
+  if (chrome.alarms) {
+    chrome.alarms.create("keep-alive", { periodInMinutes: 4 });
+    chrome.alarms.create("sheet-poll-periodic", { periodInMinutes: 15 });
+  }
 });
 
 // Alarm trigger listener
-chrome.alarms.onAlarm.addListener((alarm) => {
-  console.log(`[SW Alarm] Alarm fired: ${alarm.name}`);
-  if (alarm.name === 'keep-alive') {
-    console.log('[SW Keep Alive] Fired at:', new Date().toISOString());
-  } else if (alarm.name === 'sync-push-retry') {
-    handleBatchPushUpload(false).catch(err => console.error('[SW Alarm] sync-push-retry failed:', err));
-  } else if (alarm.name === 'sheet-poll-periodic') {
-    handleSheetSyncPoll(false).catch(err => console.error('[SW Alarm] sheet-poll-periodic failed:', err));
-  }
-});
+if (chrome.alarms) {
+  chrome.alarms.onAlarm.addListener((alarm) => {
+    console.log(`[SW Alarm] Alarm fired: ${alarm.name}`);
+    if (alarm.name === 'keep-alive') {
+      console.log('[SW Keep Alive] Fired at:', new Date().toISOString());
+    } else if (alarm.name === 'sync-push-retry') {
+      handleBatchPushUpload(false).catch(err => console.error('[SW Alarm] sync-push-retry failed:', err));
+    } else if (alarm.name === 'sheet-poll-periodic') {
+      handleSheetSyncPoll(false).catch(err => console.error('[SW Alarm] sheet-poll-periodic failed:', err));
+    }
+  });
+}
 
 // Handle context menu clicks
 chrome.contextMenus.onClicked.addListener((info, tab) => {
@@ -494,7 +498,9 @@ async function handleBatchPushUpload(forceSync = false) {
           return (j.lastRetryAt || 0) + delay;
         }));
         const delayMin = Math.max(0.1, (nextTime - Date.now()) / (60 * 1000));
-        chrome.alarms.create("sync-push-retry", { delayInMinutes: delayMin });
+        if (chrome.alarms) {
+          chrome.alarms.create("sync-push-retry", { delayInMinutes: delayMin });
+        }
       } else {
         broadcastSyncStatus('synced');
       }
@@ -583,7 +589,7 @@ async function handleBatchPushUpload(forceSync = false) {
       showSyncNotification('Sync Failed', `Some jobs failed to sync: ${lastErrorMsg}`, true);
       
       const remainingErrors = remainingPending.filter(j => (j.retryCount || 0) < 5);
-      if (remainingErrors.length > 0) {
+      if (remainingErrors.length > 0 && chrome.alarms) {
         chrome.alarms.create("sync-push-retry", { delayInMinutes: 1 });
       }
     } else {
@@ -679,7 +685,7 @@ async function handleSheetSyncPoll(force = false) {
 // SW Startup check: Resume sync for remaining pending jobs
 chrome.storage.local.get(['pendingSyncCount'], (res) => {
   const count = res.pendingSyncCount || 0;
-  if (count > 0) {
+  if (count > 0 && chrome.alarms) {
     console.log(`[SW Startup] Resuming sync for ${count} pending jobs.`);
     chrome.alarms.create("sync-push-retry", { delayInMinutes: 0.1 });
   }
