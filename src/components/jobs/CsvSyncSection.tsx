@@ -430,6 +430,13 @@ export const CsvSyncSection = ({
                 </Button>
               </div>
 
+              {urlInput?.includes('1zhdK9LJ8z0RLZmRv7TqirPTUuFAcfy9ENigLYnNTLsA') && (
+                <div className="p-2.5 bg-yellow-500/5 border border-yellow-500/10 rounded-xl text-[9px] text-yellow-500/80 flex items-start gap-1.5 font-semibold leading-relaxed">
+                  <span>⚠️</span>
+                  <span>Currently using the template sheet. Replace this with your own Google Sheet URL to view and sync your actual applications.</span>
+                </div>
+              )}
+
               <div className="space-y-1 pt-3 border-t border-white/5">
                 <h4 className="text-[10px] font-bold uppercase tracking-widest text-accent-light">Google Web App URL (Apps Script)</h4>
                 <p className="text-[9px] text-muted">Enter the deployed Google Apps Script Web App URL to enable writing/merging.</p>
