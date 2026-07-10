@@ -218,6 +218,7 @@ export const JobList = () => {
               
               setSyncProgress({ current: 80, total: 100, stage: 'Importing jobs to vault...' });
               await localDb.importJobs(parsedJobs);
+              setJobs(parsedJobs);
               
               loadedParsed = true;
               toast.dismiss(loadingToast);
@@ -254,6 +255,7 @@ export const JobList = () => {
               
               setSyncProgress({ current: 85, total: 100, stage: 'Importing default profile...' });
               await localDb.importJobs(tabs[defaultIdx].jobs);
+              setJobs(tabs[defaultIdx].jobs);
               
               loadedParsed = true;
               toast.dismiss(loadingToast);
@@ -294,6 +296,7 @@ export const JobList = () => {
         
         setSyncProgress({ current: 80, total: 100, stage: 'Importing jobs...' });
         await localDb.importJobs(parsedJobs);
+        setJobs(parsedJobs);
         
         loadedParsed = true;
         toast.dismiss(loadingToast);
