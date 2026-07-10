@@ -89,8 +89,8 @@ export const JobList = () => {
 
   // Prevent viewing the current profile's data as a vault tab
   useEffect(() => {
-    if (selectedVaultProfile && activeProfile?.full_name) {
-      const activeSanitized = sanitizeProfileName(activeProfile.full_name).toLowerCase();
+    if (selectedVaultProfile && activeProfile?.name) {
+      const activeSanitized = sanitizeProfileName(activeProfile.name).toLowerCase();
       const selectedSanitized = sanitizeProfileName(selectedVaultProfile).toLowerCase();
       if (activeSanitized === selectedSanitized) {
         setSelectedVaultProfile('');
@@ -184,8 +184,8 @@ export const JobList = () => {
           const workbook = new ExcelJS.Workbook();
           await workbook.xlsx.load(bytes.buffer);
 
-          const ownProfileNameLower = activeProfile?.full_name
-            ? activeProfile.full_name.replace(/[\\\/?:*\[\]]/g, '_').slice(0, 31).trim().toLowerCase()
+          const ownProfileNameLower = activeProfile?.name
+            ? activeProfile.name.replace(/[\\\/?:*\[\]]/g, '_').slice(0, 31).trim().toLowerCase()
             : '';
 
           let validSheets = workbook.worksheets.filter(
@@ -233,8 +233,8 @@ export const JobList = () => {
               });
 
               let defaultIdx = 0;
-              if (activeProfile?.full_name) {
-                const profileNameLower = activeProfile.full_name
+              if (activeProfile?.name) {
+                const profileNameLower = activeProfile.name
                   .replace(/[\\\/?:*\[\]]/g, '_').slice(0, 31).trim().toLowerCase();
                 const matchIdx = tabs.findIndex(t => 
                   t.name.replace(/[\\\/?:*\[\]]/g, '_').slice(0, 31).trim().toLowerCase() === profileNameLower
@@ -737,13 +737,13 @@ export const JobList = () => {
         fetching={fetching}
         handleSyncJobs={handleSyncJobs}
         handleImportCSVFile={handleImportCSVFile}
-        onExportCSV={() => exportToExcel(displayedJobs, activeProfile?.full_name)}
+        onExportCSV={() => exportToExcel(displayedJobs, activeProfile?.name)}
         onOpenAddModal={onOpenAddModal}
         onClearJobs={handleClearAllJobs}
-        onExportMergeUniversal={(file) => exportMergeUniversal(file, activeProfile?.full_name || 'Default_Profile', localJobs)}
+        onExportMergeUniversal={(file) => exportMergeUniversal(file, activeProfile?.name || 'Default_Profile', localJobs)}
         onImportUniversalVault={importUniversalVault}
         vaultProfiles={useMemo(() => {
-          const activeSanitized = sanitizeProfileName(activeProfile?.full_name).toLowerCase();
+          const activeSanitized = sanitizeProfileName(activeProfile?.name).toLowerCase();
           return vaultProfiles.filter(p => {
             const sanitizedP = sanitizeProfileName(p).toLowerCase();
             return sanitizedP !== activeSanitized;
@@ -753,7 +753,7 @@ export const JobList = () => {
         setSelectedVaultProfile={setSelectedVaultProfile}
         googleWebAppUrl={googleWebAppUrl}
         setGoogleWebAppUrl={setGoogleWebAppUrl}
-        onExportMergeGoogleSheet={() => exportMergeGoogleSheet(googleWebAppUrl, activeProfile?.full_name || 'Default_Profile', localJobs)}
+        onExportMergeGoogleSheet={() => exportMergeGoogleSheet(googleWebAppUrl, activeProfile?.name || 'Default_Profile', localJobs)}
         sheetTabNames={sheetTabs.map(t => t.name)}
         selectedSheetIdx={selectedSheetIdx}
         onSheetTabChange={handleSheetTabChange}

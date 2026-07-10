@@ -271,7 +271,7 @@ export const useJobsDb = () => {
       await loadVaultProfiles();
 
       // Filter own sheet out of notification count
-      const activeSanitized = sanitizeProfileName(activeProfile?.full_name).toLowerCase();
+      const activeSanitized = sanitizeProfileName(activeProfile?.name).toLowerCase();
 
       const hasOwnSheet = workbook.worksheets.some(sheet => {
         if (sheet.name === '__meta__') return false;
