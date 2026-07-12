@@ -61,9 +61,6 @@ if (typeof chrome !== 'undefined' && chrome.commands && (chrome.commands as any)
   });
 }
 
-// Call on startup to initialize shortcut cache
-updateShortcutCache();
-
 chrome.runtime.onInstalled.addListener(() => {
   console.log('[SW] ClipStaff extension installed');
   
@@ -147,6 +144,19 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   
   if (message.type === 'PING') {
     sendResponse({ status: 'ready' });
+    return true;
+  }
+
+  if (message.type === 'BROADCAST_INJECT_TEXT') {
+    if (_sender.tab && _sender.tab.id) {
+      chrome.tabs.sendMessage(_sender.tab.id, {
+        type: 'INJECT_TEXT',
+        text: message.text
+      }).catch((err) => {
+        console.warn('ClipStaff: Failed to broadcast INJECT_TEXT message:', err);
+      });
+    }
+    sendResponse({ success: true });
     return true;
   }
 
@@ -343,6 +353,14 @@ async function handleSaveJob(tab: chrome.tabs.Tab, urlOverride?: string) {
       // Broadcast DB change to sidebar if it's open
       chrome.runtime.sendMessage({ type: 'JOB_DATABASE_CHANGED' }).catch(() => {});
 
+      // Send message to content script indicating job was saved by shortcut
+      if (targetTab.id) {
+        chrome.tabs.sendMessage(targetTab.id, {
+          type: 'JOB_SAVED_BY_SHORTCUT',
+          job: jobItem
+        }).catch(() => {});
+      }
+
       // Show success toast
       showFeedback(targetTab.id, `Saved ${role} at ${company}!`, false);
     } catch (dbErr: any) {
@@ -393,6 +411,15 @@ async function getPersistedStore(): Promise<{ googleWebAppUrl: string; activePro
       resolve({ googleWebAppUrl: '', activeProfile: null });
     });
   });
+}
+
+function isValidGoogleScriptUrl(urlStr: string): boolean {
+  try {
+    const url = new URL(urlStr);
+    return url.protocol === 'https:' && url.hostname === 'script.google.com';
+  } catch (e) {
+    return false;
+  }
 }
 
 async function acquireSyncLock(): Promise<boolean> {
@@ -458,7 +485,9 @@ function broadcastSyncStatus(status: 'synced' | 'syncing' | 'error') {
           parsed.state.syncStatus = status;
           chrome.storage.local.set({ 'clipstaff-storage': JSON.stringify(parsed) });
         }
-      } catch (e) {}
+      } catch (e) {
+        console.error('[SW Sync] Failed to update syncStatus in persisted state:', e);
+      }
     }
   });
 }
@@ -513,16 +542,26 @@ async function handleBatchPushUpload(forceSync = false) {
     const activeProfile = store.activeProfile;
 
     if (!googleWebAppUrl || !googleWebAppUrl.trim()) {
-      console.warn('[SW Sync] Google Web App URL not configured.');
-      await markJobsAsError(eligibleJobs.map(j => j.id));
-      showSyncNotification('Sync Error', 'Google Sheets Web App URL is not configured.', false);
+      console.log('[SW Sync] Google Web App URL not configured. Saving status changes locally.');
+      const pendingIds = eligibleJobs.map(j => j.id);
+      if (pendingIds.length > 0) {
+        await markJobsAsSynced(pendingIds);
+      }
+      broadcastSyncStatus('synced');
+      await releaseSyncLock();
+      return;
+    }
+
+    if (!isValidGoogleScriptUrl(googleWebAppUrl.trim())) {
+      console.error('[SW Sync] Invalid Google Web App URL. Must start with script.google.com.');
       broadcastSyncStatus('error');
+      showSyncNotification('Sync Error', 'Invalid Sync URL configured. Must be a script.google.com URL.', false);
       await releaseSyncLock();
       return;
     }
 
     const profileName = activeProfile?.full_name || activeProfile?.name || 'Default_Profile';
-    const sanitizedName = profileName.replace(/[\\\/?:*\[\]\s]/g, '_').slice(0, 31).trim();
+    const sanitizedName = profileName.replace(/[\\/?:*[\]\s]/g, '_').slice(0, 31).trim();
 
     // Chunk size: 50
     const chunkSize = 50;
@@ -630,6 +669,11 @@ async function handleSheetSyncPoll(force = false) {
   const googleWebAppUrl = store.googleWebAppUrl;
   if (!googleWebAppUrl || !googleWebAppUrl.trim()) {
     console.log('[SW Poll] Sync URL not configured. Polling skipped.');
+    return;
+  }
+
+  if (!isValidGoogleScriptUrl(googleWebAppUrl.trim())) {
+    console.error('[SW Poll] Invalid Google Web App URL. Polling skipped.');
     return;
   }
 

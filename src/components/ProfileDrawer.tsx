@@ -85,7 +85,11 @@ interface ProfileDrawerProps {
 
 export const ProfileDrawer = ({ isOpen, onClose }: ProfileDrawerProps) => {
   const { fetchProfile, saveProfile } = useProfiles();
-  const { profileTriggers, updateProfileTrigger, setResumeText, setProfiles, setActiveProfile } = useStore();
+  const profileTriggers = useStore(state => state.profileTriggers);
+  const updateProfileTrigger = useStore(state => state.updateProfileTrigger);
+  const setResumeText = useStore(state => state.setResumeText);
+  const setProfiles = useStore(state => state.setProfiles);
+  const setActiveProfile = useStore(state => state.setActiveProfile);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [activeSection, setActiveSection] = useState<'personal' | 'experience' | 'education' | 'certs'>('personal');

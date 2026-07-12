@@ -38,7 +38,11 @@ const ClipStaffLogo = ({ size = 32, className = "" }: { size?: number; className
 
 function MainContent() {
   const { user, signOut } = useAuth();
-  const { snippets, dynamicShortcuts, activeProfile, profileTriggers, syncStatus } = useStore();
+  const snippets = useStore(state => state.snippets);
+  const dynamicShortcuts = useStore(state => state.dynamicShortcuts);
+  const activeProfile = useStore(state => state.activeProfile);
+  const profileTriggers = useStore(state => state.profileTriggers);
+  const syncStatus = useStore(state => state.syncStatus);
   const { fetchProfile } = useProfiles();
   const [activeTab, setActiveTab] = React.useState<'vault' | 'resume' | 'jobs' | 'match'>('vault');
   const [profileOpen, setProfileOpen] = React.useState(false);
@@ -97,7 +101,7 @@ function MainContent() {
     }
 
     try {
-      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
       if (!tab?.id) {
         toast.error('Autofill Failed', {
           description: 'No active web page detected.'
@@ -145,6 +149,7 @@ function MainContent() {
             onClick={() => setProfileOpen(true)}
             className="p-2 rounded-md bg-white/5 hover:bg-accent/10 text-ash hover:text-accent active:scale-95 duration-200 transition-all"
             title="My Profile"
+            aria-label="My Profile"
           >
             <User className="w-4 h-4" />
           </button>
@@ -164,6 +169,7 @@ function MainContent() {
               onClick={() => window.parent.postMessage({ type: 'CLOSE_CLIPSTAFF_SIDEBAR' }, '*')}
               className="p-2 rounded-md bg-white/5 hover:bg-red-500/10 text-ash hover:text-red-500 active:scale-95 duration-200 transition-all ml-1"
               title="Close Sidebar"
+              aria-label="Close Sidebar"
             >
               <X className="w-4 h-4" />
             </button>
@@ -277,6 +283,11 @@ function MainContent() {
                   });
                 }
               });
+
+              if (typeof chrome !== 'undefined' && chrome.runtime) {
+                chrome.runtime.sendMessage({ type: 'TRIGGER_BATCH_PUSH', force: true }).catch(() => {});
+                chrome.runtime.sendMessage({ type: 'TRIGGER_SHEET_POLL', force: true }).catch(() => {});
+              }
             }}
             icon={<RotateCw className="w-3 h-3" />}
             className="text-[9px]"

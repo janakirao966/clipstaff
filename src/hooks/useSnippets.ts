@@ -6,12 +6,10 @@ import { useAuth } from './useAuth';
 
 export const useSnippets = () => {
   const { user } = useAuth();
-  const { 
-    setSnippets, 
-    addSnippet, 
-    updateSnippetInStore, 
-    deleteSnippetFromStore 
-  } = useStore();
+  const setSnippets = useStore(state => state.setSnippets);
+  const addSnippet = useStore(state => state.addSnippet);
+  const updateSnippetInStore = useStore(state => state.updateSnippetInStore);
+  const deleteSnippetFromStore = useStore(state => state.deleteSnippetFromStore);
 
   const fetchSnippets = useCallback(async () => {
     if (!user) return;

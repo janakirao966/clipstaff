@@ -13,36 +13,127 @@ export function cleanString(str: string): string {
   }
 }
 
-export function extractCompanyFromUrl(urlStr: string): string {
+const companyMappings: Record<string, string> = {
+  'bakerhughes': 'Baker Hughes',
+  'smartrecruiters': 'SmartRecruiters',
+  'trccompanies': 'TRC Companies',
+  'etechgroup': 'Etech Group',
+  'selinc': 'SEL',
+  'jm': 'Johns Manville',
+  'astspacemobile': 'AST SpaceMobile',
+  'colossalbiosciences': 'Colossal Biosciences',
+  'allencontrolsystems': 'Allen Control Systems',
+  'championx': 'ChampionX',
+  'jobdiva': 'JobDiva',
+  'mottmac': 'Mott MacDonald',
+  'controlpanelsusa': 'Control Panels USA',
+  'qualityai': 'Quality AI',
+  'paylocity': 'Paylocity',
+  'successfactors': 'SuccessFactors',
+  'archkey': 'ArchKey',
+  'lcra': 'LCRA',
+  'oracle': 'Oracle'
+};
+
+function getRawCompanyFromUrl(urlStr: string): string {
   try {
     const url = new URL(urlStr);
-    const host = url.hostname.replace('www.', '');
+    const host = url.hostname.toLowerCase();
 
+    // 1. Workday specific
+    if (host.includes('myworkdayjobs.com')) {
+      const hostParts = host.split('.');
+      if (hostParts[0] && !['careers', 'jobs', 'www', 'myworkdayjobs'].includes(hostParts[0])) {
+        return cleanString(hostParts[0]);
+      }
+      const pathParts = url.pathname.split('/').filter(Boolean);
+      if (pathParts[0]) {
+        if (/^[a-z]{2}-[a-z]{2}$/i.test(pathParts[0]) || ['external', 'jobs'].includes(pathParts[0].toLowerCase())) {
+          if (pathParts[1]) return cleanString(pathParts[1]);
+        }
+        return cleanString(pathParts[0]);
+      }
+    }
+
+    // 2. Greenhouse specific
     if (host.includes('greenhouse.io')) {
       const forParam = url.searchParams.get('for');
       if (forParam) return cleanString(forParam);
-    }
-    if (host.includes('myworkdayjobs.com')) {
-      const parts = url.pathname.split('/');
-      if (parts[1]) return cleanString(parts[1]);
-    }
-    if (host.includes('oraclecloud.com')) {
-      return 'Oracle';
-    }
-    if (host.includes('applytojob.com')) {
-      const parts = url.hostname.split('.');
-      if (parts[0]) return cleanString(parts[0]);
-    }
-    if (host.includes('careerplug.com')) {
-      const parts = url.hostname.split('.');
-      if (parts[0]) return cleanString(parts[0]);
+      const pathParts = url.pathname.split('/').filter(Boolean);
+      const companyIndex = pathParts.indexOf('embed') !== -1 ? pathParts.indexOf('embed') + 1 : 0;
+      if (pathParts[companyIndex] && pathParts[companyIndex] !== 'job_app') {
+        return cleanString(pathParts[companyIndex]);
+      }
     }
 
-    const parts = host.split('.');
+    // 3. Oracle Cloud specific
+    if (host.includes('oraclecloud.com')) {
+      const hostParts = host.split('.');
+      if (hostParts[0] && !['fa', 'hcm', 'www'].includes(hostParts[0])) {
+        return cleanString(hostParts[0]);
+      }
+      return 'Oracle';
+    }
+
+    // 4. ADP specific
+    if (host.includes('adp.com')) {
+      const pathParts = url.pathname.split('/').filter(Boolean);
+      if (pathParts[0] && pathParts[0] !== 'cx') return cleanString(pathParts[0]);
+      if (pathParts[1] && pathParts[1] !== 'cx') return cleanString(pathParts[1]);
+    }
+
+    // 5. SmartRecruiters specific
+    if (host.includes('smartrecruiters.com')) {
+      const pathParts = url.pathname.split('/').filter(Boolean);
+      const companyIdx = pathParts.indexOf('company');
+      if (companyIdx !== -1 && pathParts[companyIdx + 1]) {
+        return cleanString(pathParts[companyIdx + 1]);
+      }
+    }
+
+    // 6. SuccessFactors specific
+    if (host.includes('successfactors.')) {
+      const companyParam = url.searchParams.get('company') || url.searchParams.get('companyId');
+      if (companyParam) return cleanString(companyParam);
+      const hostParts = host.split('.');
+      if (hostParts[0] && !/^career\d*$/i.test(hostParts[0]) && !/^www\d*$/i.test(hostParts[0])) {
+        return cleanString(hostParts[0]);
+      }
+    }
+
+    // 7. UKG / Ultimate Software specific
+    if (host.includes('ukg.net') || host.includes('ultipro.com')) {
+      const hostParts = host.split('.');
+      if (hostParts[0] && !['rec', 'pro', 'www', 't', 'e'].includes(hostParts[0])) {
+        return cleanString(hostParts[0]);
+      }
+    }
+
+    // 8. JobDiva specific
+    if (host.includes('jobdiva.com')) {
+      const hostParts = host.split('.');
+      if (hostParts[0] && !/^www\d*$/i.test(hostParts[0])) {
+        return cleanString(hostParts[0]);
+      }
+      return 'JobDiva';
+    }
+
+    // 9. Paylocity specific
+    if (host.includes('paylocity.com')) {
+      const pathParts = url.pathname.split('/').filter(Boolean);
+      const applyIdx = pathParts.findIndex(p => p.toLowerCase() === 'apply');
+      if (applyIdx !== -1 && pathParts[applyIdx + 2]) {
+        return cleanString(pathParts[applyIdx + 2]);
+      }
+    }
+
+    // 10. General fallback logic
+    const cleanHost = host.replace('www.', '');
+    const parts = cleanHost.split('.');
     if (parts.length > 2) {
       const first = parts[0];
       const second = parts[1];
-      if (['careers', 'jobs', 'ats', 'job-boards', 'apply', 'postings', 'www'].includes(first)) {
+      if (/^www\d*$/.test(first) || /^career\d*$/.test(first) || ['careers', 'jobs', 'ats', 'job-boards', 'apply', 'postings', 'recruiting', 'external'].includes(first)) {
         return cleanString(second);
       }
       return cleanString(first);
@@ -53,6 +144,15 @@ export function extractCompanyFromUrl(urlStr: string): string {
   }
 }
 
+export function extractCompanyFromUrl(urlStr: string): string {
+  const raw = getRawCompanyFromUrl(urlStr);
+  const key = raw.toLowerCase().replace(/[-_\s]+/g, '');
+  if (companyMappings[key]) {
+    return companyMappings[key];
+  }
+  return raw;
+}
+
 export function extractRoleFromUrl(urlStr: string): string {
   try {
     const url = new URL(urlStr);
@@ -61,12 +161,27 @@ export function extractRoleFromUrl(urlStr: string): string {
     const segments = pathname.split('/').filter(s => s.length > 0);
     if (segments.length === 0) return 'Job Opportunity';
 
+    const genericKeywords = [
+      'apply', 'job-opening', 'job_opening', 'job-details', 'job_details',
+      'opportunitydetail', 'portalcareer', 'portal', 'index', 'home',
+      'confirm', 'confirmation', 'jobs', 'careers', 'applytojob',
+      'jobpost', 'job_post', 'jobposting', 'job_posting', 'job-app',
+      'job_app', 'jobapp', 'submit', 'application', 'employment',
+      'external', 'autofillwithresume', 'opportunity', 'detail', 'details'
+    ];
+
     for (let i = segments.length - 1; i >= 0; i--) {
       const segment = segments[i];
       if (/^\d+$/.test(segment) || segment.length < 5) continue;
       
-      const cleanSeg = segment
-        .split(/[?#]/)[0]
+      let cleanSeg = segment.split(/[?#]/)[0];
+      cleanSeg = cleanSeg.replace(/\.(php|html|htm|aspx|jsp)$/i, '');
+
+      if (genericKeywords.includes(cleanSeg.toLowerCase().trim())) {
+        continue;
+      }
+
+      cleanSeg = cleanSeg
         .replace(/[-_]\d+$/, '')
         .replace(/^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}$/, '');
 
@@ -77,7 +192,10 @@ export function extractRoleFromUrl(urlStr: string): string {
 
     const lastSeg = segments[segments.length - 1];
     if (lastSeg && !/^\d+$/.test(lastSeg)) {
-      return cleanString(lastSeg);
+      let cleanLast = lastSeg.split(/[?#]/)[0].replace(/\.(php|html|htm|aspx|jsp)$/i, '');
+      if (!genericKeywords.includes(cleanLast.toLowerCase().trim())) {
+        return cleanString(cleanLast);
+      }
     }
 
     return 'Job Opportunity';
@@ -274,4 +392,44 @@ export const sanitizeProfileName = (name: string | null | undefined): string => 
     .slice(0, 31)
     .trim() || 'Default_Profile';
 };
+
+export function normalizeDateStr(dateStr?: string | null): string {
+  if (!dateStr) return '';
+  const trimmed = dateStr.trim();
+  if (!trimmed) return '';
+  
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(trimmed)) return trimmed;
+  
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    const parts = trimmed.split('-');
+    return `${parts[1]}/${parts[2]}/${parts[0]}`;
+  }
+  
+  if (/^\d{2}-\d{2}-\d{4}$/.test(trimmed)) {
+    const parts = trimmed.split('-');
+    return `${parts[0]}/${parts[1]}/${parts[2]}`;
+  }
+
+  if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(trimmed)) {
+    const parts = trimmed.split('/');
+    const mm = parts[0].padStart(2, '0');
+    const dd = parts[1].padStart(2, '0');
+    return `${mm}/${dd}/${parts[2]}`;
+  }
+
+  if (/^\d{1,2}-\d{1,2}-\d{4}$/.test(trimmed)) {
+    const parts = trimmed.split('-');
+    const mm = parts[0].padStart(2, '0');
+    const dd = parts[1].padStart(2, '0');
+    return `${mm}/${dd}/${parts[2]}`;
+  }
+  
+  try {
+    const d = new Date(trimmed);
+    if (!isNaN(d.getTime())) {
+      return d.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
+    }
+  } catch {}
+  return trimmed;
+}
 

@@ -54,7 +54,7 @@ export const JobTableRow = ({
   const config = statusConfig[job.status] || statusConfig.not_applied;
 
   return (
-    <div className="group p-4 bg-carbon border border-graphite rounded-xl hover:border-smoke hover:bg-obsidian hover:-translate-y-0.5 duration-150 transition-all flex flex-col gap-3 relative overflow-hidden">
+    <div className="group p-4 bg-carbon border border-graphite rounded-xl hover:border-smoke hover:bg-obsidian hover:-translate-y-0.5 duration-150 transition-all flex flex-col gap-3 relative">
       {/* Top Row: Job details */}
       <div className="flex items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
@@ -150,7 +150,7 @@ export const JobTableRow = ({
 
             {activeDropdown === job.id && (
               <div 
-                className="absolute right-0 bottom-full mb-1 w-28 bg-[#0D0D0D] border border-white/10 rounded-xl shadow-premium z-50 py-1 overflow-hidden"
+                className="absolute right-0 top-full mt-1 w-28 bg-[#0D0D0D] border border-white/10 rounded-xl shadow-premium z-50 py-1 overflow-hidden"
                 onClick={(e) => e.stopPropagation()}
               >
                 {(['not_applied', 'applied', 'skipped'] as const).map((status) => {

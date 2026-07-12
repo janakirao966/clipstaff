@@ -29,11 +29,11 @@
     }
   },
   "host_permissions": [
-    "https://*/*",
-    "http://*/*",
-    "file://*/*",
     "https://docs.google.com/*",
-    "https://*.googleusercontent.com/*"
+    "https://*.googleusercontent.com/*",
+    "https://script.google.com/*",
+    "https://*.supabase.co/*",
+    "https://generativelanguage.googleapis.com/*"
   ],
   "action": {
     "default_icon": {
@@ -68,7 +68,8 @@
         "index.html",
         "assets/*"
       ],
-      "matches": ["<all_urls>"]
+      "matches": ["<all_urls>"],
+      "use_dynamic_url": false
     }
   ]
 }

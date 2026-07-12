@@ -13,7 +13,8 @@ interface ImportExportManagerProps {
 }
 
 export const ImportExportManager = ({ onAutofill, onAddShortcut }: ImportExportManagerProps) => {
-  const { snippets, setResumeText } = useStore();
+  const snippets = useStore(state => state.snippets);
+  const setResumeText = useStore(state => state.setResumeText);
   const { updateSnippet, createSnippet } = useSnippets();
   const { saveProfile } = useProfiles();
   const fileInputRef = useRef<HTMLInputElement>(null);

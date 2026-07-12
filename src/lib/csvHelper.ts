@@ -1,6 +1,9 @@
 import { Job } from '../types';
 import { toast } from 'sonner';
-import { extractCompanyFromUrl, extractRoleFromUrl, getJobId, normalizeUrl, sanitizeProfileName, compareUrls } from './extractor';
+import { extractCompanyFromUrl, extractRoleFromUrl, getJobId, normalizeUrl, sanitizeProfileName, compareUrls, normalizeDateStr } from './extractor';
+
+// Robust CSV Parser (RFC 4180 compliant)
+// ... (omitting lines 6-107 for brevity) ...
 
 // Robust CSV Parser (RFC 4180 compliant)
 export function parseCSV(text: string): string[][] {
@@ -105,7 +108,11 @@ export function exportToCSV(jobs: Job[], profileName?: string | null) {
   toast.success('CSV Export Completed');
 }
 
-export async function exportToExcel(jobs: Job[], profileName?: string | null) {
+export async function exportToExcel(
+  jobs: Job[], 
+  profileName?: string | null,
+  onDownloadTriggered?: (fileUrl: string, filename: string) => void
+) {
   if (jobs.length === 0) {
     toast.error('No jobs to export.');
     return;
@@ -119,68 +126,70 @@ export async function exportToExcel(jobs: Job[], profileName?: string | null) {
     const worksheet = workbook.addWorksheet('Job Applications');
 
     // Define columns
-    worksheet.columns = [
-      { header: 'S.No.', key: 'sno', width: 8 },
-      { header: 'Company', key: 'company', width: 25 },
-      { header: 'Role', key: 'role', width: 30 },
-      { header: 'URL', key: 'url', width: 45 },
-      { header: 'Status', key: 'status', width: 15 },
-      { header: 'Date Added', key: 'dateAdded', width: 18 }
-    ];
-
-    // Add row data
-    jobs.forEach((job, index) => {
-      worksheet.addRow({
-        sno: index + 1,
-        company: job.company,
-        role: job.role,
-        url: job.url,
-        status: job.status,
-        dateAdded: job.dateAdded || ''
+    if (jobs.length > 0) {
+      const cleanTabName = (profileName || 'Sheet1').replace(/[^a-zA-Z0-9_]/g, '_');
+      const uniqueTableName = `Table_${cleanTabName}_${Date.now()}`;
+      
+      worksheet.addTable({
+        name: uniqueTableName,
+        ref: 'A1',
+        headerRow: true,
+        totalsRow: false,
+        style: {
+          theme: 'TableStyleMedium2', // Slate/Blue themed table style
+          showRowStripes: true,
+        },
+        columns: [
+          { name: 'S.No.', filterButton: true },
+          { name: 'Company', filterButton: true },
+          { name: 'Role', filterButton: true },
+          { name: 'URL', filterButton: true },
+          { name: 'Status', filterButton: true },
+          { name: 'Date Added', filterButton: true }
+        ],
+        rows: jobs.map((job, index) => [
+          index + 1,
+          job.company,
+          job.role,
+          job.url,
+          job.status,
+          job.dateAdded ? normalizeDateStr(job.dateAdded) : ''
+        ])
       });
-    });
+    } else {
+      worksheet.columns = [
+        { header: 'S.No.', key: 'sno', width: 8 },
+        { header: 'Company', key: 'company', width: 25 },
+        { header: 'Role', key: 'role', width: 30 },
+        { header: 'URL', key: 'url', width: 45 },
+        { header: 'Status', key: 'status', width: 15 },
+        { header: 'Date Added', key: 'dateAdded', width: 18 }
+      ];
+    }
 
-    // Format headers
-    const headerRow = worksheet.getRow(1);
-    headerRow.height = 28;
-    headerRow.eachCell((cell) => {
-      cell.font = { name: 'Segoe UI', size: 10, bold: true, color: { argb: 'FFFFFFFF' } };
-      cell.fill = {
-        type: 'pattern',
-        pattern: 'solid',
-        fgColor: { argb: 'FF1E293B' } // Slate-800
-      };
-      cell.alignment = { vertical: 'middle', horizontal: 'center' };
-      cell.border = {
-        bottom: { style: 'double', color: { argb: 'FF0F172A' } }
-      };
-    });
-
-    // Format grid rows
+    // Format headers and rows
     worksheet.eachRow((row, rowNumber) => {
-      if (rowNumber === 1) return; // Skip headers
+      if (rowNumber === 1) {
+        row.height = 28;
+        row.eachCell((cell) => {
+          cell.font = { name: 'Segoe UI', size: 10, bold: true, color: { argb: 'FFFFFFFF' } };
+          cell.fill = {
+            type: 'pattern',
+            pattern: 'solid',
+            fgColor: { argb: 'FF1E293B' } // Slate-800
+          };
+          cell.alignment = { vertical: 'middle', horizontal: 'center' };
+        });
+        return;
+      }
+
       row.height = 24;
-
-      const isEven = rowNumber % 2 === 0;
-      const rowColor = isEven ? 'FFF8FAFC' : 'FFFFFFFF'; // Alternate slate-50 / white
-
       row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
         cell.font = { name: 'Segoe UI', size: 10, color: { argb: 'FF334155' } }; // Slate-700
-        cell.fill = {
-          type: 'pattern',
-          pattern: 'solid',
-          fgColor: { argb: rowColor }
-        };
         cell.alignment = { vertical: 'middle' };
-        cell.border = {
-          top: { style: 'thin', color: { argb: 'FFE2E8F0' } },
-          left: { style: 'thin', color: { argb: 'FFE2E8F0' } },
-          bottom: { style: 'thin', color: { argb: 'FFE2E8F0' } },
-          right: { style: 'thin', color: { argb: 'FFE2E8F0' } }
-        };
 
-        // Centered S.No.
-        if (colNumber === 1) {
+        // Center S.No, Status, and Date columns
+        if (colNumber === 1 || colNumber === 5 || colNumber === 6) {
           cell.alignment = { vertical: 'middle', horizontal: 'center' };
         }
 
@@ -198,8 +207,7 @@ export async function exportToExcel(jobs: Job[], profileName?: string | null) {
 
         // Color-coded Status badges (Column 5)
         if (colNumber === 5 && cell.value) {
-          const val = cell.value.toString();
-          cell.alignment = { vertical: 'middle', horizontal: 'center' };
+          const val = cell.value.toString().toLowerCase();
           if (val === 'applied') {
             cell.font = { name: 'Segoe UI', size: 10, bold: true, color: { argb: 'FF059669' } }; // Green-600
             cell.value = 'Applied';
@@ -210,11 +218,6 @@ export async function exportToExcel(jobs: Job[], profileName?: string | null) {
             cell.font = { name: 'Segoe UI', size: 10, color: { argb: 'FF64748B' } }; // Slate-500
             cell.value = 'To Apply';
           }
-        }
-
-        // Centered Date Added (Column 6)
-        if (colNumber === 6) {
-          cell.alignment = { vertical: 'middle', horizontal: 'center' };
         }
       });
     });
@@ -241,20 +244,24 @@ export async function exportToExcel(jobs: Job[], profileName?: string | null) {
     const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
     const fileUrl = URL.createObjectURL(blob);
     
-    const downloadLink = document.createElement('a');
-    downloadLink.setAttribute('href', fileUrl);
-
     const prefix = profileName ? sanitizeProfileName(profileName) : 'clipstaff';
     const dateStr = new Date().toISOString().split('T')[0];
-    downloadLink.setAttribute('download', `${prefix}_applications_${dateStr}.xlsx`);
-
-    document.body.appendChild(downloadLink);
-    downloadLink.click();
-    document.body.removeChild(downloadLink);
-    URL.revokeObjectURL(fileUrl);
+    const filename = `${prefix}_applications_${dateStr}.xlsx`;
 
     toast.dismiss(loadingToast);
-    toast.success('Excel Export Completed');
+
+    if (onDownloadTriggered) {
+      onDownloadTriggered(fileUrl, filename);
+    } else {
+      const downloadLink = document.createElement('a');
+      downloadLink.setAttribute('href', fileUrl);
+      downloadLink.setAttribute('download', filename);
+      document.body.appendChild(downloadLink);
+      downloadLink.click();
+      document.body.removeChild(downloadLink);
+      URL.revokeObjectURL(fileUrl);
+      toast.success('Excel Export Completed');
+    }
   } catch (err: any) {
     console.error('Failed to export styled Excel sheet:', err);
     toast.dismiss(loadingToast);
@@ -354,9 +361,12 @@ export function parseRowsToJobs(rows: string[][], existingJobs?: Job[]): Job[] {
       role = extractRoleFromUrl(url);
     }
 
-    const dateAdded = dateIdx !== -1 && dateIdx !== urlIdx && dateIdx !== companyIdx && dateIdx !== roleIdx
+    let dateAdded = dateIdx !== -1 && dateIdx !== urlIdx && dateIdx !== companyIdx && dateIdx !== roleIdx
       ? (row[dateIdx] || '').trim()
       : undefined;
+    if (dateAdded) {
+      dateAdded = normalizeDateStr(dateAdded);
+    }
 
     // Detect status from spreadsheet data
     let status: Job['status'] = 'not_applied';

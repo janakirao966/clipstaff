@@ -13,13 +13,11 @@ function escHtml(str: string) {
 }
 
 export const ResumeBuilder = () => {
-  const { 
-    activeProfile, 
-    setDynamicShortcuts, 
-    dynamicShortcuts,
-    resumeText,
-    setResumeText
-  } = useStore();
+  const activeProfile = useStore(state => state.activeProfile);
+  const setDynamicShortcuts = useStore(state => state.setDynamicShortcuts);
+  const dynamicShortcuts = useStore(state => state.dynamicShortcuts);
+  const resumeText = useStore(state => state.resumeText);
+  const setResumeText = useStore(state => state.setResumeText);
   const [generating, setGenerating] = useState(false);
   const [fontFamily, setFontFamily] = useState<'serif' | 'sans'>('serif');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -107,13 +105,13 @@ export const ResumeBuilder = () => {
     if (P.location) contactParts.push(escHtml(P.location));
     if (P.phone) contactParts.push(escHtml(P.phone));
     if (P.email) {
-      contactParts.push(`<a href="mailto:${escHtml(P.email)}" style="color:#0000ff;text-decoration:underline;">${escHtml(P.email)}</a>`);
+      contactParts.push(`<a href="mailto:${escHtml(P.email)}" style="color:rgb(0,0,255);text-decoration:underline;">${escHtml(P.email)}</a>`);
     }
     if (P.linkedin) {
       const rawUrl = P.linkedin.trim();
       const hrefUrl = rawUrl.startsWith('http') ? rawUrl : `https://${rawUrl}`;
       const display = rawUrl.replace(/^https?:\/\//i, '').replace(/^www\./i, '').replace(/\/+$/, '');
-      contactParts.push(`<a href="${escHtml(hrefUrl)}" target="_blank" rel="noopener noreferrer" style="color:#0000ff;text-decoration:underline;">${escHtml(display)}</a>`);
+      contactParts.push(`<a href="${escHtml(hrefUrl)}" target="_blank" rel="noopener noreferrer" style="color:rgb(0,0,255);text-decoration:underline;">${escHtml(display)}</a>`);
     }
     
     html += `<div class="rb-contact">${contactParts.join(' &nbsp;|&nbsp; ')}</div>`;

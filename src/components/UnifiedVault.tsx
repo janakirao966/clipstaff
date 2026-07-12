@@ -10,7 +10,7 @@ import { ImportExportManager } from './vault/ImportExportManager';
 import { ProfileForm } from './vault/ProfileForm';
 
 export const UnifiedVault = ({ onAutofill }: { onAutofill?: () => void }) => {
-  const { activeProfile } = useStore();
+  const activeProfile = useStore(state => state.activeProfile);
   const { fetchSnippets } = useSnippets();
   const { saveProfile } = useProfiles();
   const [loading, setLoading] = useState(true);

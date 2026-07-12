@@ -19,16 +19,14 @@ interface EligibilityResult {
 }
 
 export const EligibilityChecker = () => {
-  const { 
-    geminiApiKey, 
-    setGeminiApiKey,
-    checkerJdText, 
-    setCheckerJdText,
-    lastEligibilityResult, 
-    setLastEligibilityResult,
-    activeProfile,
-    resumeText
-  } = useStore();
+  const geminiApiKey = useStore(state => state.geminiApiKey);
+  const setGeminiApiKey = useStore(state => state.setGeminiApiKey);
+  const checkerJdText = useStore(state => state.checkerJdText);
+  const setCheckerJdText = useStore(state => state.setCheckerJdText);
+  const lastEligibilityResult = useStore(state => state.lastEligibilityResult);
+  const setLastEligibilityResult = useStore(state => state.setLastEligibilityResult);
+  const activeProfile = useStore(state => state.activeProfile);
+  const resumeText = useStore(state => state.resumeText);
 
   const typedResult = lastEligibilityResult as EligibilityResult | null;
 
@@ -39,7 +37,7 @@ export const EligibilityChecker = () => {
   // Grabs highlighted text from the active tab context
   const grabSelectedText = async () => {
     try {
-      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
       if (!tab?.id) {
         toast.error('No active tab detected');
         return;
@@ -172,6 +170,8 @@ ${checkerJdText}`;
             responseMimeType: 'application/json'
           }
         })
+      }).catch(err => {
+        throw new Error('Network request failed: ' + err.message);
       });
 
       if (!res.ok) {
@@ -205,8 +205,8 @@ ${checkerJdText}`;
   // Helper to color codes
   const getBadgeColor = (val: string) => {
     return val === 'Eligible' || val === 'Not Triggered'
-      ? 'bg-pulse-green/10 text-pulse-green border-pulse-green/20'
-      : 'bg-coral-red/10 text-coral-red border-coral-red/20';
+      ? 'bg-pulse-green/10 text-emerald-400 border-emerald-500/20'
+      : 'bg-coral-red/10 text-rose-400 border-rose-500/20';
   };
 
   return (
@@ -231,7 +231,9 @@ ${checkerJdText}`;
               Exclusions and ATS match checking requires a Gemini API Key. Keys are saved locally on your device and are never sent to external servers.
             </p>
             <div className="relative">
+              <label htmlFor="gemini-api-key" className="sr-only">Gemini API Key</label>
               <input 
+                id="gemini-api-key"
                 type="password"
                 placeholder="AIzaSy..."
                 value={apiKeyInput}
@@ -250,7 +252,7 @@ ${checkerJdText}`;
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <div className="space-y-0.5">
-            <h3 className="text-[10px] font-bold uppercase tracking-[0.2em] text-ash">Target Job Description</h3>
+            <label htmlFor="jd-textarea" className="text-[10px] font-bold uppercase tracking-[0.2em] text-ash block">Target Job Description</label>
             <p className="text-[9px] text-fog">Highlight text on any tab and grab it below.</p>
           </div>
           <Button variant="secondary" size="sm" onClick={grabSelectedText} icon={<ClipboardPaste className="w-3 h-3" />} className="text-[9px] py-1.5">
@@ -259,6 +261,7 @@ ${checkerJdText}`;
         </div>
 
         <textarea 
+          id="jd-textarea"
           rows={6}
           placeholder="Paste Job Description here, or select/highlight text on a webpage and click 'Grab Selection' above..."
           value={checkerJdText}

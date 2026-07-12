@@ -59,7 +59,7 @@ export const Auth = () => {
 
   return (
     <div className="min-h-screen bg-void flex items-center justify-center p-6 relative">
-      <div className="w-full max-w-sm bg-carbon border border-graphite rounded-md p-8 shadow-sm">
+      <div className="w-full max-w-sm bg-carbon border border-graphite rounded-xl p-8 shadow-sm">
         <div className="flex flex-col items-center mb-8">
           <img 
             src="/icons/icon128.png" 
@@ -74,10 +74,11 @@ export const Auth = () => {
 
         <form onSubmit={handleAuth} className="space-y-5">
           <div className="space-y-1.5">
-            <label className="text-[10px] font-medium uppercase tracking-wider text-ash ml-1">Email Address</label>
+            <label htmlFor="auth-email" className="text-[10px] font-medium uppercase tracking-wider text-ash ml-1">Email Address</label>
             <div className="relative group">
               <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-ash group-focus-within:text-accent transition-colors" />
               <input
+                id="auth-email"
                 type="email"
                 placeholder="name@company.com"
                 className="w-full pl-12 pr-4 py-2.5 bg-void border border-graphite rounded-md text-xs text-mist placeholder:text-fog focus:outline-none focus:border-bone transition-all"
@@ -90,7 +91,7 @@ export const Auth = () => {
 
           <div className="space-y-1.5">
             <div className="flex items-center justify-between ml-1">
-              <label className="text-[10px] font-medium uppercase tracking-wider text-ash">Password</label>
+              <label htmlFor="auth-password" className="text-[10px] font-medium uppercase tracking-wider text-ash">Password</label>
               {mode === 'login' && (
                 <button
                   type="button"
@@ -104,6 +105,7 @@ export const Auth = () => {
             <div className="relative group">
               <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-ash group-focus-within:text-accent transition-colors" />
               <input
+                id="auth-password"
                 type={showPassword ? 'text' : 'password'}
                 placeholder="Your password"
                 className="w-full pl-12 pr-12 py-2.5 bg-void border border-graphite rounded-md text-xs text-mist placeholder:text-fog focus:outline-none focus:border-bone transition-all"
@@ -131,7 +133,7 @@ export const Auth = () => {
             type="submit"
             isLoading={loading}
             icon={<ChevronRight className="w-4 h-4" />}
-            className="w-full py-3 text-xs font-semibold tracking-wider bg-accent hover:bg-accent-light text-void active:scale-95 duration-150"
+            className="w-full py-3 text-[10px] font-bold tracking-widest"
           >
             {mode === 'login' ? 'SIGN IN' : 'CREATE ACCOUNT'}
           </Button>

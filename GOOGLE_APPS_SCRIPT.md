@@ -219,6 +219,7 @@ function batchUploadJobs(profileName, jobs) {
     headerRange.setBackground("#1E293B"); // Slate-800
     headerRange.setFontColor("#FFFFFF");
     headerRange.setHorizontalAlignment("center");
+    sheet.setColumnWidth(1, 50); // Set S.No column to be narrow (small width)
   }
   
   var lastRow = sheet.getLastRow();
@@ -275,6 +276,19 @@ function batchUploadJobs(profileName, jobs) {
       addedCount++;
     }
   }
+  
+  // Recalculate S.No. (Column A) to ensure sequential numbering and format it as center-aligned
+  var finalLastRow = sheet.getLastRow();
+  if (finalLastRow > 1) {
+    var snoRange = sheet.getRange(2, 1, finalLastRow - 1, 1);
+    var snoValues = [];
+    for (var r = 2; r <= finalLastRow; r++) {
+      snoValues.push([r - 1]);
+    }
+    snoRange.setValues(snoValues);
+    snoRange.setHorizontalAlignment("center");
+  }
+  sheet.setColumnWidth(1, 50); // Keep column A narrow (small width)
   
   var newVersion = incrementSheetVersion();
   return {

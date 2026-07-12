@@ -10,12 +10,13 @@
     --color-obsidian: #161718;
     --color-graphite: #23252a;
     --color-smoke: #383b3f;
-    --color-ash: #62666d;
+    --color-ash: #8F95A0;
     --color-fog: #8a8f98;
     --color-mist: #d0d6e0;
     --color-bone: #e5e5e6;
     --color-paper: #ffffff;
     --color-acid-lime: #e4f222;
+    --font-serif: 'Times New Roman', Times, serif;
   }
 
   html {
@@ -71,20 +72,20 @@
 }
 
 /* Resume Builder Preview Styles */
-.rb-name { font-size: 14pt; font-weight: bold; color: #000000; text-align: center; margin-bottom: 4pt; margin-top: 4pt; font-family: 'Times New Roman', Times, serif; }
-.rb-subtitle { font-size: 11pt; font-weight: bold; color: #000000; text-align: center; margin-bottom: 6pt; font-family: 'Times New Roman', Times, serif; }
-.rb-contact { font-size: 11pt; color: #000000; text-align: center; margin-bottom: 12pt; line-height: 1.25; display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 8px; font-family: 'Times New Roman', Times, serif; }
-.rb-contact a { color: #0000ff !important; text-decoration: underline !important; }
+.rb-name { font-size: 14pt; font-weight: bold; color: #000000; text-align: center; margin-bottom: 4pt; margin-top: 4pt; font-family: var(--font-serif); }
+.rb-subtitle { font-size: 11pt; font-weight: bold; color: #000000; text-align: center; margin-bottom: 6pt; font-family: var(--font-serif); }
+.rb-contact { font-size: 11pt; color: #000000; text-align: center; margin-bottom: 12pt; line-height: 1.25; display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 8px; font-family: var(--font-serif); }
+.rb-contact a { color: rgb(0,0,255) !important; text-decoration: underline !important; }
 .rb-sep { color: #000000; }
-.rb-section-head { font-size: 11pt; font-weight: bold; text-transform: uppercase; color: #000000; border-bottom: 0.5pt solid #000000; padding-bottom: 2pt; margin: 12pt 0 4pt 0; text-align: left; font-family: 'Times New Roman', Times, serif; }
-.rb-text { font-size: 11pt; color: #000000; margin-bottom: 6pt; line-height: 1.15; text-align: justify; font-family: 'Times New Roman', Times, serif; }
-.rb-skill-line { font-size: 11pt; color: #000000; margin-bottom: 4pt; line-height: 1.15; text-align: left; font-family: 'Times New Roman', Times, serif; }
-.rb-exp-header { display: flex; justify-content: space-between; align-items: baseline; margin-top: 10pt; margin-bottom: 2px; font-weight: bold; font-size: 11pt; color: #000000; font-family: 'Times New Roman', Times, serif; }
-.rb-exp-role { font-size: 11pt; color: #000000; font-weight: normal; margin-bottom: 4pt; text-align: left; font-family: 'Times New Roman', Times, serif; }
-.rb-bullet { font-size: 11pt; color: #000000; margin-left: 0; padding-left: 8pt; margin-top: 3pt; margin-bottom: 3pt; line-height: 1.15; position: relative; text-align: left; font-family: 'Times New Roman', Times, serif; }
+.rb-section-head { font-size: 11pt; font-weight: bold; text-transform: uppercase; color: #000000; border-bottom: 0.5pt solid #000000; padding-bottom: 2pt; margin: 12pt 0 4pt 0; text-align: left; font-family: var(--font-serif); }
+.rb-text { font-size: 11pt; color: #000000; margin-bottom: 6pt; line-height: 1.15; text-align: justify; font-family: var(--font-serif); }
+.rb-skill-line { font-size: 11pt; color: #000000; margin-bottom: 4pt; line-height: 1.15; text-align: left; font-family: var(--font-serif); }
+.rb-exp-header { display: flex; justify-content: space-between; align-items: baseline; margin-top: 10pt; margin-bottom: 2px; font-weight: bold; font-size: 11pt; color: #000000; font-family: var(--font-serif); }
+.rb-exp-role { font-size: 11pt; color: #000000; font-weight: normal; margin-bottom: 4pt; text-align: left; font-family: var(--font-serif); }
+.rb-bullet { font-size: 11pt; color: #000000; margin-left: 0; padding-left: 8pt; margin-top: 3pt; margin-bottom: 3pt; line-height: 1.15; position: relative; text-align: left; font-family: var(--font-serif); }
 .rb-bullet::before { content: "•"; position: absolute; left: 0; width: 8pt; text-align: left; color: #000000; }
-.rb-edu-row { display: flex; justify-content: space-between; align-items: baseline; margin-top: 10pt; margin-bottom: 2px; font-weight: bold; font-size: 11pt; color: #000000; font-family: 'Times New Roman', Times, serif; }
-.rb-edu-school { font-size: 11pt; color: #000000; font-weight: normal; margin-bottom: 4pt; text-align: left; font-family: 'Times New Roman', Times, serif; }
+.rb-edu-row { display: flex; justify-content: space-between; align-items: baseline; margin-top: 10pt; margin-bottom: 2px; font-weight: bold; font-size: 11pt; color: #000000; font-family: var(--font-serif); }
+.rb-edu-school { font-size: 11pt; color: #000000; font-weight: normal; margin-bottom: 4pt; text-align: left; font-family: var(--font-serif); }
 
 /* Accessibility: Respect prefers-reduced-motion settings */
 @media (prefers-reduced-motion: reduce) {

@@ -1,7 +1,10 @@
-import { useEffect, useRef } from 'react';
+import React, { useEffect, useRef } from 'react';
+import { List } from 'react-window';
 import { Job } from '../../types';
 import { JobTableRow } from './JobTableRow';
-import { ChevronDown, Check, ExternalLink, Trash2 } from 'lucide-react';
+import { ChevronDown, Check, ExternalLink, Trash2, XCircle } from 'lucide-react';
+
+const ListComponent = List as any;
 
 interface VirtualizedJobListProps {
   jobs: Job[];
@@ -14,8 +17,183 @@ interface VirtualizedJobListProps {
   onUpdateStatus: (url: string, status: Job['status']) => void;
   activeDropdown: string | null;
   setActiveDropdown: (id: string | null) => void;
-  onItemsRendered?: (props: any) => void;
+  onItemsRendered?: (props: { visibleStartIndex: number; visibleStopIndex: number }) => void;
 }
+
+const CardRow = ({
+  index,
+  style,
+  jobs,
+  viewMode,
+  onDelete,
+  onApply,
+  onUpdateStatus,
+  activeDropdown,
+  setActiveDropdown,
+  isReadOnly,
+  showProfileBadge
+}: any): JSX.Element | null => {
+  const job = jobs[index];
+  if (!job) return null;
+  
+  const isDropdownActive = activeDropdown === job.id;
+  
+  return (
+    <div style={{ ...style, zIndex: isDropdownActive ? 100 : 1 }}>
+      <div className="pb-3 pr-1">
+        <JobTableRow
+          job={job}
+          viewMode={viewMode}
+          onDelete={onDelete}
+          onApply={onApply}
+          onUpdateStatus={onUpdateStatus}
+          activeDropdown={activeDropdown}
+          setActiveDropdown={setActiveDropdown}
+          isReadOnly={isReadOnly}
+          showProfileBadge={showProfileBadge}
+        />
+      </div>
+    </div>
+  );
+};
+
+
+const TableRow = ({
+  index,
+  style,
+  jobs,
+  viewMode,
+  onDelete,
+  onApply,
+  onUpdateStatus,
+  activeDropdown,
+  setActiveDropdown,
+  isReadOnly,
+  showProfileBadge,
+  statusConfig
+}: any): JSX.Element | null => {
+  const job = jobs[index];
+  if (!job) return null;
+  
+  const config = statusConfig[job.status] || statusConfig.not_applied;
+  const isDropdownActive = activeDropdown === job.id;
+  
+  return (
+    <div 
+      style={{ ...style, zIndex: isDropdownActive ? 100 : 1 }}
+      className="flex items-center border-b border-graphite/40 hover:bg-obsidian/45 transition-colors text-[10px] text-paper py-2"
+    >
+      {/* Serial Number */}
+      <div className="w-10 text-center text-ash font-mono select-none px-1">
+        {index + 1}
+      </div>
+
+      {/* Role Name */}
+      <div className="flex-1 font-semibold truncate px-2 max-w-[120px]" title={job.role}>
+        {job.role}
+      </div>
+
+      {/* Company Name & optional Profile Badge */}
+      <div className="flex-1 text-ash truncate px-2 max-w-[120px]" title={job.company}>
+        <div>{job.company}</div>
+        {showProfileBadge && (job as any).profileName && (
+          <span className="inline-flex items-center gap-0.5 px-1 py-0.5 bg-accent/15 border border-accent/25 rounded text-[7px] font-black uppercase tracking-wider text-accent mt-0.5">
+            {(job as any).profileName}
+          </span>
+        )}
+      </div>
+
+      {/* Date Added */}
+      <div className="w-24 text-fog font-mono text-[9px] px-2 truncate">
+        {job.dateAdded || 'N/A'}
+      </div>
+
+      {/* Status Dropdown */}
+      <div className="w-24 text-center px-1">
+        <div className="relative inline-block text-left">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setActiveDropdown(activeDropdown === job.id ? null : job.id);
+            }}
+            className={`flex items-center justify-between w-20 gap-1 px-1.5 py-0.5 rounded border text-[7.5px] font-bold uppercase tracking-wider transition-all ${config.color}`}
+          >
+            <span>{config.label}</span>
+            <ChevronDown className="w-2 h-2 opacity-60" />
+          </button>
+
+          {activeDropdown === job.id && (
+            <div 
+              className="absolute right-0 top-full mt-1 w-24 bg-[#0D0D0D] border border-white/10 rounded-lg shadow-premium z-50 py-1 overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {(['not_applied', 'applied', 'skipped'] as const).map((status) => {
+                const optionLabel = {
+                  not_applied: 'To Apply',
+                  applied: 'Applied',
+                  skipped: 'Skipped'
+                };
+                return (
+                  <button
+                    key={status}
+                    onClick={() => {
+                      onUpdateStatus(job.url, status);
+                      setActiveDropdown(null);
+                    }}
+                    className={`flex items-center justify-between w-full px-2 py-1 text-left text-[8px] font-semibold tracking-wider uppercase transition-colors hover:bg-white/5 ${
+                      job.status === status ? 'text-accent' : 'text-ash'
+                    }`}
+                  >
+                    <span>{optionLabel[status]}</span>
+                    {job.status === status && <Check className="w-2 h-2 text-accent" />}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Actions (Apply & Delete) */}
+      <div className="w-20 text-center flex items-center justify-center gap-1.5 px-1">
+        <button
+          onClick={() => onApply(job)}
+          className={`px-2 py-1 rounded active:scale-95 duration-150 transition-all flex items-center gap-1 text-[8px] font-bold uppercase tracking-wider border ${
+            job.status === 'applied'
+              ? 'bg-pulse-green/10 hover:bg-pulse-green/20 text-pulse-green border-pulse-green/20'
+              : job.status === 'skipped'
+              ? 'bg-coral-red/10 hover:bg-coral-red/20 text-coral-red border-coral-red/20'
+              : 'bg-accent/10 hover:bg-accent/20 text-accent border-accent/20'
+          }`}
+        >
+          <span>
+            {job.status === 'applied' ? 'Applied' : job.status === 'skipped' ? 'Skipped' : 'Apply'}
+          </span>
+          {job.status === 'applied' ? (
+            <Check className="w-2 h-2" />
+          ) : job.status === 'skipped' ? (
+            <XCircle className="w-2 h-2" />
+          ) : (
+            <ExternalLink className="w-2 h-2" />
+          )}
+        </button>
+        
+        {viewMode === 'local' && !isReadOnly && (
+          <button
+            onClick={() => {
+              console.log('[ClipStaff UI] Delete button clicked in Table for job ID:', job.id);
+              onDelete(job.id);
+            }}
+            className="p-1 rounded bg-red-500/5 hover:bg-red-500/15 text-ash hover:text-red-400 border border-transparent hover:border-red-500/20 transition-all"
+            title="Delete application"
+          >
+            <Trash2 className="w-2.5 h-2.5" />
+          </button>
+        )}
+      </div>
+    </div>
+  );
+};
 
 export const VirtualizedJobList = ({
   jobs,
@@ -34,54 +212,43 @@ export const VirtualizedJobList = ({
   const isReadOnly = !!selectedVaultProfile;
   const showProfileBadge = selectedVaultProfile === '__all__' || (viewMode === 'sheet' && selectedSheetIdx === -1);
 
-  const cardsListRef = useRef<HTMLDivElement>(null);
-  const tableListRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<any>(null);
 
-  // Scroll offset persistence
+  // Restore scroll offset on mount or mode change
   useEffect(() => {
-    const listRef = layoutMode === 'cards' ? cardsListRef : tableListRef;
     const key = `clipstaff_scroll_offset_${layoutMode}`;
-    
-    const timeout = setTimeout(() => {
-      const el = listRef.current;
-      if (!el) return;
-
+    const restoreScroll = () => {
+      const element = listRef.current?.element;
+      if (!element) return;
+      
       if (typeof chrome !== 'undefined' && chrome.storage?.local) {
         chrome.storage.local.get([key], (res) => {
-          if (res[key] && el) {
-            el.scrollTop = res[key];
+          if (res[key] && element) {
+            element.scrollTop = res[key];
           }
         });
       } else {
         const offset = localStorage.getItem(key);
-        if (offset && el) {
-          el.scrollTop = parseInt(offset, 10);
+        if (offset && element) {
+          element.scrollTop = parseInt(offset, 10);
         }
       }
-
-      const handleScroll = () => {
-        if (typeof chrome !== 'undefined' && chrome.storage?.local) {
-          chrome.storage.local.set({ [key]: el.scrollTop });
-        } else {
-          localStorage.setItem(key, el.scrollTop.toString());
-        }
-      };
-
-      el.addEventListener('scroll', handleScroll, { passive: true });
-      return () => {
-        el.removeEventListener('scroll', handleScroll);
-      };
-    }, 50);
-
-    return () => clearTimeout(timeout);
+    };
+    
+    const timer = setTimeout(restoreScroll, 50);
+    return () => clearTimeout(timer);
   }, [layoutMode, jobs.length]);
 
-  // Call onItemsRendered to keep compatibility with range display in JobList.tsx
-  useEffect(() => {
-    if (onItemsRendered) {
-      onItemsRendered({ visibleStartIndex: 0, visibleStopIndex: jobs.length - 1 });
+  // Persist scroll offset
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const scrollOffset = e.currentTarget.scrollTop;
+    const key = `clipstaff_scroll_offset_${layoutMode}`;
+    if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+      chrome.storage.local.set({ [key]: scrollOffset });
+    } else {
+      localStorage.setItem(key, scrollOffset.toString());
     }
-  }, [jobs.length, onItemsRendered]);
+  };
 
   const statusConfig = {
     not_applied: { 
@@ -102,27 +269,30 @@ export const VirtualizedJobList = ({
 
   if (layoutMode === 'cards') {
     return (
-      <div 
-        ref={cardsListRef}
-        className="custom-scrollbar overflow-y-auto space-y-3 pr-1" 
-        style={{ height: listHeight, width: '100%' }}
-      >
-        {jobs.map((job) => (
-          <div key={job.id}>
-            <JobTableRow
-              job={job}
-              viewMode={viewMode}
-              onDelete={onDelete}
-              onApply={onApply}
-              onUpdateStatus={onUpdateStatus}
-              activeDropdown={activeDropdown}
-              setActiveDropdown={setActiveDropdown}
-              isReadOnly={isReadOnly}
-              showProfileBadge={showProfileBadge}
-            />
-          </div>
-        ))}
-      </div>
+      <ListComponent
+        listRef={listRef}
+        height={listHeight}
+        rowCount={jobs.length}
+        rowHeight={136} // 124px card height + 12px gap
+        rowComponent={CardRow}
+        rowProps={{
+          jobs,
+          viewMode,
+          onDelete,
+          onApply,
+          onUpdateStatus,
+          activeDropdown,
+          setActiveDropdown,
+          isReadOnly,
+          showProfileBadge
+        }}
+        onScroll={handleScroll}
+        onRowsRendered={({ startIndex, stopIndex }: { startIndex: number; stopIndex: number }) => {
+          if (onItemsRendered) {
+            onItemsRendered({ visibleStartIndex: startIndex, visibleStopIndex: stopIndex });
+          }
+        }}
+      />
     );
   }
 
@@ -141,118 +311,32 @@ export const VirtualizedJobList = ({
 
       {/* Table Body List */}
       <div className="custom-scrollbar overflow-x-auto min-w-[450px]">
-        <div 
-          ref={tableListRef}
-          className="custom-scrollbar overflow-y-auto divide-y divide-graphite/40"
-          style={{ height: listHeight, width: '100%' }}
-        >
-          {jobs.map((job, index) => {
-            const config = statusConfig[job.status] || statusConfig.not_applied;
-            return (
-              <div 
-                key={job.id}
-                className="flex items-center border-b border-graphite/40 hover:bg-obsidian/45 transition-colors text-[10px] text-paper py-2.5"
-              >
-                {/* Serial Number */}
-                <div className="w-10 text-center text-ash font-mono select-none px-1">
-                  {index + 1}
-                </div>
-
-                {/* Role Name */}
-                <div className="flex-1 font-semibold truncate px-2 max-w-[120px]" title={job.role}>
-                  {job.role}
-                </div>
-
-                {/* Company Name & optional Profile Badge */}
-                <div className="flex-1 text-ash truncate px-2 max-w-[120px]" title={job.company}>
-                  <div>{job.company}</div>
-                  {showProfileBadge && (job as any).profileName && (
-                    <span className="inline-flex items-center gap-0.5 px-1 py-0.5 bg-accent/15 border border-accent/25 rounded text-[7px] font-black uppercase tracking-wider text-accent mt-0.5">
-                      {(job as any).profileName}
-                    </span>
-                  )}
-                </div>
-
-                {/* Date Added */}
-                <div className="w-24 text-fog font-mono text-[9px] px-2 truncate">
-                  {job.dateAdded || 'N/A'}
-                </div>
-
-                {/* Status Dropdown */}
-                <div className="w-24 text-center px-1">
-                  <div className="relative inline-block text-left">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setActiveDropdown(activeDropdown === job.id ? null : job.id);
-                      }}
-                      className={`flex items-center justify-between w-20 gap-1 px-1.5 py-0.5 rounded border text-[7.5px] font-bold uppercase tracking-wider transition-all ${config.color}`}
-                    >
-                      <span>{config.label}</span>
-                      <ChevronDown className="w-2 h-2 opacity-60" />
-                    </button>
-
-                    {activeDropdown === job.id && (
-                      <div 
-                        className="absolute right-0 bottom-full mb-1 w-20 bg-[#0D0D0D] border border-white/10 rounded-lg shadow-premium z-50 py-1 overflow-hidden"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        {(['not_applied', 'applied', 'skipped'] as const).map((status) => {
-                          const optionLabel = {
-                            not_applied: 'To Apply',
-                            applied: 'Applied',
-                            skipped: 'Skipped'
-                          };
-                          return (
-                            <button
-                              key={status}
-                              onClick={() => {
-                                onUpdateStatus(job.url, status);
-                                setActiveDropdown(null);
-                              }}
-                              className={`flex items-center justify-between w-full px-2 py-1 text-left text-[8px] font-semibold tracking-wider uppercase transition-colors hover:bg-white/5 ${
-                                job.status === status ? 'text-accent' : 'text-ash'
-                              }`}
-                            >
-                              <span>{optionLabel[status]}</span>
-                              {job.status === status && <Check className="w-2 h-2 text-accent" />}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Actions (External Link & Delete) */}
-                <div className="w-20 text-center flex items-center justify-center gap-1.5 px-1">
-                  <a
-                    href={job.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="p-1 rounded bg-white/5 hover:bg-white/10 hover:text-accent border border-graphite transition-all"
-                    title="Open job link"
-                  >
-                    <ExternalLink className="w-2.5 h-2.5" />
-                  </a>
-                  
-                  {viewMode === 'local' && !isReadOnly && (
-                    <button
-                      onClick={() => {
-                        console.log('[ClipStaff UI] Delete button clicked in Table for job ID:', job.id);
-                        onDelete(job.id);
-                      }}
-                      className="p-1 rounded bg-red-500/5 hover:bg-red-500/15 text-ash hover:text-red-400 border border-transparent hover:border-red-500/20 transition-all"
-                      title="Delete application"
-                    >
-                      <Trash2 className="w-2.5 h-2.5" />
-                    </button>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
+        <ListComponent
+          listRef={listRef}
+          height={listHeight}
+          rowCount={jobs.length}
+          rowHeight={40} // 40px row height
+          rowComponent={TableRow}
+          rowProps={{
+            jobs,
+            viewMode,
+            onDelete,
+            onApply,
+            onUpdateStatus,
+            activeDropdown,
+            setActiveDropdown,
+            isReadOnly,
+            showProfileBadge,
+            statusConfig
+          }}
+          className="divide-y divide-graphite/40"
+          onScroll={handleScroll}
+          onRowsRendered={({ startIndex, stopIndex }: { startIndex: number; stopIndex: number }) => {
+            if (onItemsRendered) {
+              onItemsRendered({ visibleStartIndex: startIndex, visibleStopIndex: stopIndex });
+            }
+          }}
+        />
       </div>
     </div>
   );

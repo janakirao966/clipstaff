@@ -9,6 +9,7 @@ import { showHudPrompt } from './lib/hud';
 let shortcutCache: Record<string, string> = {};
 let activeProfileCache: any = null;
 let lastFocusedInput: HTMLElement | null = null;
+let layoutModeCache = 'overlay'; // default to overlay
 
 document.addEventListener('focusin', (e) => {
   const target = e.target as HTMLElement;
@@ -20,13 +21,16 @@ document.addEventListener('focusin', (e) => {
 // Load from storage on init
 const loadCacheFromStorage = () => {
   if (typeof chrome !== 'undefined' && chrome.storage) {
-    chrome.storage.local.get(['clipstaff_shortcuts', 'clipstaff_active_profile'], (result) => {
+    chrome.storage.local.get(['clipstaff_shortcuts', 'clipstaff_active_profile', 'clipstaff_layout_mode'], (result) => {
       if (result.clipstaff_shortcuts) {
         shortcutCache = result.clipstaff_shortcuts;
         console.log('ClipStaff: Live Cache Ready', Object.keys(shortcutCache).length, 'keys');
       }
       if (result.clipstaff_active_profile) {
         activeProfileCache = result.clipstaff_active_profile;
+      }
+      if (result.clipstaff_layout_mode) {
+        layoutModeCache = result.clipstaff_layout_mode;
       }
     });
   }
@@ -43,6 +47,9 @@ if (typeof chrome !== 'undefined' && chrome.storage) {
       if (changes.clipstaff_active_profile) {
         activeProfileCache = changes.clipstaff_active_profile.newValue || null;
       }
+      if (changes.clipstaff_layout_mode) {
+        layoutModeCache = changes.clipstaff_layout_mode.newValue || 'overlay';
+      }
     }
   });
 }
@@ -51,142 +58,239 @@ loadCacheFromStorage();
 
 // --- Injected Sidebar Iframe & Floating Toggle Button ---
 
-const iframe = document.createElement('iframe');
-iframe.id = 'clipstaff-sidebar-iframe';
-iframe.setAttribute('allow', 'clipboard-write');
-iframe.style.cssText = `
-  position: fixed !important;
-  top: 0 !important;
-  right: -400px !important;
-  width: 400px !important;
-  height: 100vh !important;
-  z-index: 2147483646 !important;
-  border: none !important;
-  background: transparent !important;
-  transition: right 0.3s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.3s ease !important;
-  box-shadow: none !important;
-  color-scheme: dark !important;
-`;
+// --- Injected Sidebar Iframe & Floating Toggle Button ---
 
-const toggleBtn = document.createElement('button');
-toggleBtn.id = 'clipstaff-sidebar-toggle';
-toggleBtn.style.cssText = `
-  position: fixed !important;
-  right: 0 !important;
-  top: 50% !important;
-  transform: translateY(-50%) !important;
-  width: 36px !important;
-  height: 48px !important;
-  background: #0A0A0A !important;
-  border: 1px solid rgba(255, 255, 255, 0.1) !important;
-  border-right: none !important;
-  border-radius: 12px 0 0 12px !important;
-  cursor: pointer !important;
-  z-index: 2147483647 !important;
-  display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  transition: right 0.3s cubic-bezier(0.16, 1, 0.3, 1), background 0.2s !important;
-  box-shadow: -2px 0 10px rgba(0, 0, 0, 0.3) !important;
-  padding: 0 !important;
-  margin: 0 !important;
-`;
+if (window.self === window.top) {
+  // Create shadow host container
+  const host = document.createElement('div');
+  host.id = 'clipstaff-sidebar-host';
+  host.style.cssText = 'all: initial !important; display: block !important; position: fixed !important; top: 0 !important; right: 0 !important; width: 0 !important; height: 0 !important; border: none !important; margin: 0 !important; padding: 0 !important; z-index: 2147483647 !important; overflow: visible !important; pointer-events: none !important;';
 
-const logoImg = document.createElement('img');
-logoImg.src = chrome.runtime.getURL('public/icons/icon16.png');
-logoImg.style.cssText = `
-  width: 18px !important;
-  height: 18px !important;
-  pointer-events: none !important;
-  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1) !important;
-`;
-toggleBtn.appendChild(logoImg);
+  // Attach shadow root
+  const shadowRoot = host.attachShadow({ mode: 'closed' });
 
-const injectSidebar = () => {
-  if (!document.getElementById('clipstaff-sidebar-iframe')) {
-    document.body.appendChild(iframe);
-    document.body.appendChild(toggleBtn);
-  }
-};
-
-if (document.body) {
-  injectSidebar();
-} else {
-  window.addEventListener('DOMContentLoaded', injectSidebar);
-}
-
-let isSidebarOpen = false;
-
-function toggleSidebar() {
-  isSidebarOpen = !isSidebarOpen;
-  
-  const body = document.body;
-  
-  if (isSidebarOpen) {
-    if (!iframe.src) {
-      iframe.src = chrome.runtime.getURL('index.html');
+  // Injected CSS Styles for Shadow DOM elements
+  const style = document.createElement('style');
+  style.textContent = `
+    #clipstaff-sidebar-iframe {
+      position: fixed !important;
+      top: 0 !important;
+      right: -400px !important;
+      width: 400px !important;
+      height: 100vh !important;
+      z-index: 2147483646 !important;
+      border: none !important;
+      background: transparent !important;
+      transition: right 0.3s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.3s ease !important;
+      box-shadow: none !important;
+      color-scheme: dark !important;
+      pointer-events: auto !important;
     }
-    iframe.style.setProperty('right', '0px', 'important');
-    iframe.style.setProperty('box-shadow', '-10px 0 30px rgba(0, 0, 0, 0.5)', 'important');
-    toggleBtn.style.setProperty('right', '400px', 'important');
-    logoImg.style.setProperty('transform', 'rotate(180deg)', 'important');
-    
-    // Shift document body to make room for the sidebar smoothly
-    body.style.setProperty('transition', 'margin-right 0.3s cubic-bezier(0.16, 1, 0.3, 1), width 0.3s cubic-bezier(0.16, 1, 0.3, 1)', 'important');
-    body.style.setProperty('margin-right', '400px', 'important');
-    body.style.setProperty('width', 'calc(100% - 400px)', 'important');
+    #clipstaff-sidebar-toggle {
+      position: fixed !important;
+      right: 0 !important;
+      top: 50% !important;
+      transform: translateY(-50%) !important;
+      width: 36px !important;
+      height: 48px !important;
+      background: #0A0A0A !important;
+      border: 1px solid rgba(255, 255, 255, 0.1) !important;
+      border-right: none !important;
+      border-radius: 12px 0 0 12px !important;
+      cursor: pointer !important;
+      z-index: 2147483647 !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      transition: right 0.3s cubic-bezier(0.16, 1, 0.3, 1), background 0.2s !important;
+      box-shadow: -2px 0 10px rgba(0, 0, 0, 0.3) !important;
+      padding: 0 !important;
+      margin: 0 !important;
+      pointer-events: auto !important;
+    }
+    #clipstaff-sidebar-toggle img {
+      width: 18px !important;
+      height: 18px !important;
+      pointer-events: none !important;
+      transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1) !important;
+    }
+  `;
+  shadowRoot.appendChild(style);
+
+  const iframe = document.createElement('iframe');
+  iframe.id = 'clipstaff-sidebar-iframe';
+  iframe.setAttribute('allow', 'clipboard-write');
+
+  const toggleBtn = document.createElement('button');
+  toggleBtn.id = 'clipstaff-sidebar-toggle';
+
+  const logoImg = document.createElement('img');
+  logoImg.src = chrome.runtime.getURL('public/icons/icon16.png');
+  toggleBtn.appendChild(logoImg);
+
+  const injectSidebar = () => {
+    if (!document.getElementById('clipstaff-sidebar-host')) {
+      iframe.setAttribute('title', 'ClipStaff Sidebar');
+      toggleBtn.setAttribute('aria-label', 'Toggle ClipStaff Sidebar');
+      toggleBtn.setAttribute('aria-expanded', 'false');
+      toggleBtn.setAttribute('role', 'button');
+      toggleBtn.setAttribute('tabindex', '0');
+      
+      toggleBtn.addEventListener('focus', () => {
+        toggleBtn.style.setProperty('outline', '2px solid #e4f222', 'important');
+        toggleBtn.style.setProperty('outline-offset', '-2px', 'important');
+      });
+      toggleBtn.addEventListener('blur', () => {
+        toggleBtn.style.removeProperty('outline');
+        toggleBtn.style.removeProperty('outline-offset');
+      });
+
+      shadowRoot.appendChild(iframe);
+      shadowRoot.appendChild(toggleBtn);
+      document.documentElement.appendChild(host);
+
+      // Watch for SPA hydration DOM wipes and restore host node automatically
+      const observer = new MutationObserver(() => {
+        if (!document.getElementById('clipstaff-sidebar-host')) {
+          document.documentElement.appendChild(host);
+        }
+      });
+      observer.observe(document.documentElement, { childList: true });
+    }
+  };
+
+  if (document.documentElement) {
+    injectSidebar();
   } else {
-    iframe.style.setProperty('right', '-400px', 'important');
-    iframe.style.setProperty('box-shadow', 'none', 'important');
-    toggleBtn.style.setProperty('right', '0px', 'important');
-    logoImg.style.setProperty('transform', 'rotate(0deg)', 'important');
-    
-    // Reset document body layout
-    body.style.setProperty('margin-right', '0px', 'important');
-    body.style.setProperty('width', '100%', 'important');
+    window.addEventListener('DOMContentLoaded', injectSidebar);
   }
-}
 
-toggleBtn.addEventListener('click', (e) => {
-  e.stopPropagation();
-  toggleSidebar();
-});
+  let isSidebarOpen = false;
 
-// Close or inject text when receiving a postMessage from inside the iframe
-window.addEventListener('message', (event) => {
-  if (event.data && event.data.type === 'CLOSE_CLIPSTAFF_SIDEBAR') {
+  const toggleSidebar = () => {
+    isSidebarOpen = !isSidebarOpen;
+    
+    const body = document.body;
+    const mode = layoutModeCache;
+    
+    toggleBtn.setAttribute('aria-expanded', isSidebarOpen ? 'true' : 'false');
+    
     if (isSidebarOpen) {
+      if (!iframe.src) {
+        iframe.src = chrome.runtime.getURL('index.html');
+      }
+      iframe.style.setProperty('right', '0px', 'important');
+      iframe.style.setProperty('box-shadow', '-10px 0 30px rgba(0, 0, 0, 0.5)', 'important');
+      toggleBtn.style.setProperty('right', '400px', 'important');
+      logoImg.style.setProperty('transform', 'rotate(180deg)', 'important');
+      
+      if (mode === 'squeeze') {
+        body.style.setProperty('transition', 'margin-right 0.3s cubic-bezier(0.16, 1, 0.3, 1), width 0.3s cubic-bezier(0.16, 1, 0.3, 1)', 'important');
+        body.style.setProperty('margin-right', '400px', 'important');
+        body.style.setProperty('width', 'calc(100% - 400px)', 'important');
+      } else {
+        body.style.removeProperty('margin-right');
+        body.style.removeProperty('width');
+      }
+    } else {
+      iframe.style.setProperty('right', '-400px', 'important');
+      iframe.style.setProperty('box-shadow', 'none', 'important');
+      toggleBtn.style.setProperty('right', '0px', 'important');
+      logoImg.style.setProperty('transform', 'rotate(0deg)', 'important');
+      
+      body.style.removeProperty('margin-right');
+      body.style.removeProperty('width');
+    }
+  };
+
+  toggleBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleSidebar();
+  });
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && isSidebarOpen) {
       toggleSidebar();
     }
-  }
-  if (event.data && event.data.type === 'INJECT_TEXT') {
-    injectText(event.data.text);
-  }
-  if (event.data && event.data.type === 'COPY_TEXT') {
-    navigator.clipboard.writeText(event.data.text).catch((err) => {
-      console.error('ClipStaff: Content script copy failed', err);
-    });
-  }
-});
+  });
 
+  // Close or inject text when receiving a postMessage from inside the iframe
+  window.addEventListener('message', (event) => {
+    // Validate that the message source is our own injected sidebar iframe
+    if (!iframe || event.source !== iframe.contentWindow) {
+      return;
+    }
+
+    if (event.data && event.data.type === 'CLOSE_CLIPSTAFF_SIDEBAR') {
+      if (isSidebarOpen) {
+        toggleSidebar();
+      }
+    }
+    if (event.data && event.data.type === 'INJECT_TEXT') {
+      // Broadcast text injection to all frames in the tab via background worker
+      chrome.runtime.sendMessage({ type: 'BROADCAST_INJECT_TEXT', text: event.data.text }).catch((err) => {
+        console.warn('ClipStaff: BROADCAST_INJECT_TEXT failed, falling back to local top-frame injection', err);
+        injectText(event.data.text);
+      });
+    }
+    if (event.data && event.data.type === 'COPY_TEXT') {
+      navigator.clipboard.writeText(event.data.text).catch((err) => {
+        console.error('ClipStaff: Content script copy failed', err);
+      });
+    }
+  });
+
+  chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+    if (message.type === 'TOGGLE_SIDEBAR') {
+      toggleSidebar();
+      sendResponse({ status: 'done' });
+      return true;
+    }
+    if (message.type === 'SHOW_PAGE_TOAST') {
+      showPageToast(message.message, message.isError);
+      sendResponse({ status: 'done' });
+      return true;
+    }
+    if (message.type === 'JOB_SAVED_BY_SHORTCUT') {
+      if (!isSidebarOpen) {
+        toggleSidebar();
+      }
+      
+      const relayMessage = () => {
+        if (iframe && iframe.contentWindow) {
+          const extensionOrigin = chrome.runtime.getURL('').slice(0, -1);
+          iframe.contentWindow.postMessage({
+            type: 'JOB_SAVED_BY_SHORTCUT',
+            job: message.job
+          }, extensionOrigin);
+        }
+      };
+
+      // If iframe source isn't loaded yet, wait for onload, otherwise relay immediately
+      if (iframe.src) {
+        relayMessage();
+      } else {
+        iframe.onload = () => {
+          relayMessage();
+          iframe.onload = null; // Clean up listener
+        };
+      }
+      
+      sendResponse({ status: 'done' });
+      return true;
+    }
+  });
+}
+
+// Global runtime message listener active in all frames
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.type === 'PING') {
     loadCacheFromStorage();
     sendResponse({ status: 'ready', shortcutsCount: Object.keys(shortcutCache).length });
     return true;
   }
-  if (message.type === 'TOGGLE_SIDEBAR') {
-    toggleSidebar();
-    sendResponse({ status: 'done' });
-    return true;
-  }
   if (message.type === 'INJECT_TEXT') {
     injectText(message.text);
-    sendResponse({ status: 'done' });
-    return true;
-  }
-  if (message.type === 'SHOW_PAGE_TOAST') {
-    showPageToast(message.message, message.isError);
     sendResponse({ status: 'done' });
     return true;
   }

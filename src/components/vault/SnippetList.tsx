@@ -19,7 +19,10 @@ export const SnippetList = ({
   onEditProfile,
   onEditSnippet
 }: SnippetListProps) => {
-  const { snippets, searchTerm, setSearchTerm, activeProfile } = useStore();
+  const snippets = useStore(state => state.snippets);
+  const searchTerm = useStore(state => state.searchTerm);
+  const setSearchTerm = useStore(state => state.setSearchTerm);
+  const activeProfile = useStore(state => state.activeProfile);
   const { deleteSnippet, updateSnippet } = useSnippets();
   const [activeCategory, setActiveCategory] = useState('All');
   const [deletingId, setDeletingId] = useState<string | null>(null);

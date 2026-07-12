@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { normalizeUrl, getJobId, compareUrls } from './extractor';
+import { normalizeUrl, getJobId, compareUrls, extractCompanyFromUrl, extractRoleFromUrl, normalizeDateStr } from './extractor';
 
 describe('URL Normalization', () => {
   it('should lowercase the hostname', () => {
@@ -51,5 +51,57 @@ describe('URL Comparison', () => {
 
   it('should return false for different URLs', () => {
     expect(compareUrls('https://google.com/jobs', 'https://yahoo.com/jobs')).toBe(false);
+  });
+});
+
+describe('Metadata Extraction', () => {
+  describe('Company Extraction', () => {
+    it('should extract correct company from Workday subdomains and pathnames', () => {
+      expect(extractCompanyFromUrl('https://bakerhughes.wd5.myworkdayjobs.com/en-US/bakerhughes/job/US-TX/Apply')).toBe('Baker Hughes');
+      expect(extractCompanyFromUrl('https://jm.wd103.myworkdayjobs.com/en-US/External/job/Cleburne-TX/Apply')).toBe('Johns Manville');
+    });
+
+    it('should extract correct company from Greenhouse URLs', () => {
+      expect(extractCompanyFromUrl('https://job-boards.greenhouse.io/embed/job_app?for=etechgroup')).toBe('Etech Group');
+    });
+
+    it('should extract correct company from Oracle Cloud candidate sites', () => {
+      expect(extractCompanyFromUrl('https://elcn.fa.us2.oraclecloud.com/hcmUI/CandidateExperience/en/sites/CX/job/112737')).toBe('Elcn');
+    });
+
+    it('should extract correct company from Paylocity URLs', () => {
+      expect(extractCompanyFromUrl('https://recruiting.paylocity.com/recruiting/jobs/Apply/3855760/Hyper-Solutions-Inc/Applications-Engineer')).toBe('Hyper Solutions Inc');
+    });
+
+    it('should extract correct company from JobDiva URLs', () => {
+      expect(extractCompanyFromUrl('https://www1.jobdiva.com/portal?a=123')).toBe('JobDiva');
+    });
+  });
+
+  describe('Role Extraction', () => {
+    it('should skip generic filenames and return fallback', () => {
+      expect(extractRoleFromUrl('https://msengr.hrmdirect.com/employment/job-opening.php?req=3757076')).toBe('Job Opportunity');
+      expect(extractRoleFromUrl('https://career2.successfactors.eu/portalcareer')).toBe('Job Opportunity');
+    });
+
+    it('should parse actual roles containing hyphens or underscores', () => {
+      expect(extractRoleFromUrl('https://bakerhughes.wd5.myworkdayjobs.com/job/Field-Service-Electrical-Engineer_R160331/apply')).toBe('Field Service Electrical Engineer R160331');
+    });
+  });
+
+  describe('Date String Normalization', () => {
+    it('should format long JavaScript Date strings into MM/DD/YYYY', () => {
+      expect(normalizeDateStr('Sat Jul 11 2026 05:30:00 GMT+0530 (India Standard Time)')).toBe('07/11/2026');
+    });
+
+    it('should pad single digit month/day values in MM/DD/YYYY', () => {
+      expect(normalizeDateStr('7/12/2026')).toBe('07/12/2026');
+      expect(normalizeDateStr('07/12/2026')).toBe('07/12/2026');
+    });
+
+    it('should convert hyphen separated formats YYYY-MM-DD and MM-DD-YYYY', () => {
+      expect(normalizeDateStr('2026-07-11')).toBe('07/11/2026');
+      expect(normalizeDateStr('07-11-2026')).toBe('07/11/2026');
+    });
   });
 });

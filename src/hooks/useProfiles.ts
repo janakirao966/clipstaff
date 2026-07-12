@@ -6,10 +6,8 @@ import { useAuth } from './useAuth';
 
 export const useProfiles = () => {
   const { user } = useAuth();
-  const { 
-    setProfiles, 
-    setActiveProfile 
-  } = useStore();
+  const setProfiles = useStore(state => state.setProfiles);
+  const setActiveProfile = useStore(state => state.setActiveProfile);
 
   const fetchProfile = useCallback(async () => {
     if (!user) return null;

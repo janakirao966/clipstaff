@@ -1,12 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Job, VaultJob } from '../types';
 import * as db from '../lib/db';
-import { extractCompanyFromUrl, extractRoleFromUrl, getJobId, normalizeUrl, sanitizeProfileName } from '../lib/extractor';
+import { extractCompanyFromUrl, extractRoleFromUrl, getJobId, normalizeUrl, sanitizeProfileName, normalizeDateStr } from '../lib/extractor';
 import { toast } from 'sonner';
 import { useStore } from '../store/useStore';
 
 export const useJobsDb = () => {
-  const { activeProfile } = useStore();
+  const activeProfile = useStore(state => state.activeProfile);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
 
@@ -103,7 +103,7 @@ export const useJobsDb = () => {
     const finalCompany = company || extractCompanyFromUrl(normUrl);
     const finalRole = role || extractRoleFromUrl(normUrl);
     const id = getJobId(normUrl);
-    const dateAdded = new Date().toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
+    const dateAdded = normalizeDateStr(new Date().toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' }));
 
     const jobItem: Job = {
       id,
@@ -238,7 +238,7 @@ export const useJobsDb = () => {
           const role = getCellStrVal(roleIdx);
           const url = getCellStrVal(urlIdx);
           const statusVal = getCellStrVal(statusIdx).toLowerCase().replace(/\s+/g, '_');
-          const dateAdded = dateIdx !== -1 ? getCellStrVal(dateIdx) : '';
+          const dateAdded = dateIdx !== -1 ? normalizeDateStr(getCellStrVal(dateIdx)) : '';
 
           // Skip rows lacking primary URL/Company
           if (!url || !company) return;
@@ -303,7 +303,8 @@ export const useJobsDb = () => {
   const exportMergeUniversal = useCallback(async (
     existingFile: File | null, 
     profileName: string, 
-    currentJobs: Job[]
+    currentJobs: Job[],
+    onDownloadTriggered?: (fileUrl: string, filename: string) => void
   ) => {
     const loadingToast = toast.loading('Generating universal vault...');
 
@@ -319,9 +320,12 @@ export const useJobsDb = () => {
         await workbook.xlsx.load(arrayBuffer);
       }
 
-      // 2. Overwrite tab (case-insensitive check)
+      // 2. Overwrite tab (character-insensitive & case-insensitive check)
+      const normalizeSheetName = (name: string) => name.toLowerCase().replace(/[-_\s]+/g, '');
+      const sanitizedNameNormalized = normalizeSheetName(sanitizedName);
+      
       const matchedSheet = workbook.worksheets.find(
-        s => s.name.toLowerCase() === sanitizedName.toLowerCase()
+        s => normalizeSheetName(s.name) === sanitizedNameNormalized
       );
       if (matchedSheet) {
         workbook.removeWorksheet(matchedSheet.id);
@@ -329,103 +333,99 @@ export const useJobsDb = () => {
 
       const worksheet = workbook.addWorksheet(sanitizedName);
 
-      // 3. Define columns
-      worksheet.columns = [
-        { header: 'S.No.', key: 'sno', width: 8 },
-        { header: 'Company', key: 'company', width: 25 },
-        { header: 'Role', key: 'role', width: 30 },
-        { header: 'URL', key: 'url', width: 45 },
-        { header: 'Status', key: 'status', width: 15 },
-        { header: 'Date Added', key: 'dateAdded', width: 18 }
-      ];
-
-      // Format header row
-      const headerRow = worksheet.getRow(1);
-      headerRow.height = 28;
-      headerRow.eachCell((cell) => {
-        cell.font = { name: 'Segoe UI', size: 10, bold: true, color: { argb: 'FFFFFFFF' } };
-        cell.fill = {
-          type: 'pattern',
-          pattern: 'solid',
-          fgColor: { argb: 'FF1E293B' } // Slate-800
-        };
-        cell.alignment = { vertical: 'middle', horizontal: 'center' };
-        cell.border = {
-          bottom: { style: 'double', color: { argb: 'FF0F172A' } }
-        };
-      });
-
-      // 4. Fill row data
+      // 3. Define columns and Table if jobs exist
       if (currentJobs.length > 0) {
-        currentJobs.forEach((job, index) => {
-          worksheet.addRow({
-            sno: index + 1,
-            company: job.company,
-            role: job.role,
-            url: job.url,
-            status: job.status,
-            dateAdded: job.dateAdded || ''
-          });
+        const cleanTabName = sanitizedName.replace(/[^a-zA-Z0-9_]/g, '_');
+        const uniqueTableName = `Table_${cleanTabName}_${Date.now()}`;
+        
+        worksheet.addTable({
+          name: uniqueTableName,
+          ref: 'A1',
+          headerRow: true,
+          totalsRow: false,
+          style: {
+            theme: 'TableStyleMedium2', // Slate/Blue themed table style
+            showRowStripes: true,
+          },
+          columns: [
+            { name: 'S.No.', filterButton: true },
+            { name: 'Company', filterButton: true },
+            { name: 'Role', filterButton: true },
+            { name: 'URL', filterButton: true },
+            { name: 'Status', filterButton: true },
+            { name: 'Date Added', filterButton: true }
+          ],
+          rows: currentJobs.map((job, index) => [
+            index + 1,
+            job.company,
+            job.role,
+            job.url,
+            job.status,
+            job.dateAdded ? normalizeDateStr(job.dateAdded) : ''
+          ])
         });
+      } else {
+        worksheet.columns = [
+          { header: 'S.No.', key: 'sno', width: 8 },
+          { header: 'Company', key: 'company', width: 25 },
+          { header: 'Role', key: 'role', width: 30 },
+          { header: 'URL', key: 'url', width: 45 },
+          { header: 'Status', key: 'status', width: 15 },
+          { header: 'Date Added', key: 'dateAdded', width: 18 }
+        ];
       }
 
-      // Format row styles
+      // Format headers and rows
       worksheet.eachRow((row, rowNumber) => {
-        if (rowNumber === 1) return; // Skip headers
+        if (rowNumber === 1) {
+          row.height = 28;
+          row.eachCell((cell) => {
+            cell.font = { name: 'Segoe UI', size: 10, bold: true, color: { argb: 'FFFFFFFF' } };
+            cell.fill = {
+              type: 'pattern',
+              pattern: 'solid',
+              fgColor: { argb: 'FF1E293B' } // Slate-800
+            };
+            cell.alignment = { vertical: 'middle', horizontal: 'center' };
+          });
+          return;
+        }
+
         row.height = 24;
-
-        const isEven = rowNumber % 2 === 0;
-        const rowColor = isEven ? 'FFF8FAFC' : 'FFFFFFFF'; // Zebra striping
-
         row.eachCell({ includeEmpty: true }, (cell, colNumber) => {
-          cell.font = { name: 'Segoe UI', size: 10, color: { argb: 'FF334155' } };
-          cell.fill = {
-            type: 'pattern',
-            pattern: 'solid',
-            fgColor: { argb: rowColor }
-          };
+          cell.font = { name: 'Segoe UI', size: 10, color: { argb: 'FF334155' } }; // Slate-700
           cell.alignment = { vertical: 'middle' };
-          cell.border = {
-            top: { style: 'thin', color: { argb: 'FFE2E8F0' } },
-            left: { style: 'thin', color: { argb: 'FFE2E8F0' } },
-            bottom: { style: 'thin', color: { argb: 'FFE2E8F0' } },
-            right: { style: 'thin', color: { argb: 'FFE2E8F0' } }
-          };
 
-          if (colNumber === 1) {
+          // Center S.No, Status, and Date columns
+          if (colNumber === 1 || colNumber === 5 || colNumber === 6) {
             cell.alignment = { vertical: 'middle', horizontal: 'center' };
           }
 
-          // Hyperlinks
+          // Clickable URL Hyperlinks (Column 4)
           if (colNumber === 4 && cell.value) {
             const rawUrl = cell.value.toString();
             cell.value = { text: rawUrl, hyperlink: rawUrl };
             cell.font = {
               name: 'Segoe UI',
               size: 10,
-              color: { argb: 'FF2563EB' },
+              color: { argb: 'FF2563EB' }, // Blue-600
               underline: true
             };
           }
 
-          // Status colors
+          // Color-coded Status badges (Column 5)
           if (colNumber === 5 && cell.value) {
-            const val = cell.value.toString();
-            cell.alignment = { vertical: 'middle', horizontal: 'center' };
+            const val = cell.value.toString().toLowerCase();
             if (val === 'applied') {
-              cell.font = { name: 'Segoe UI', size: 10, bold: true, color: { argb: 'FF059669' } };
+              cell.font = { name: 'Segoe UI', size: 10, bold: true, color: { argb: 'FF059669' } }; // Green-600
               cell.value = 'Applied';
             } else if (val === 'skipped') {
-              cell.font = { name: 'Segoe UI', size: 10, bold: true, color: { argb: 'FFDC2626' } };
+              cell.font = { name: 'Segoe UI', size: 10, bold: true, color: { argb: 'FFDC2626' } }; // Red-600
               cell.value = 'Skipped';
             } else {
-              cell.font = { name: 'Segoe UI', size: 10, color: { argb: 'FF64748B' } };
+              cell.font = { name: 'Segoe UI', size: 10, color: { argb: 'FF64748B' } }; // Slate-500
               cell.value = 'To Apply';
             }
-          }
-
-          if (colNumber === 6) {
-            cell.alignment = { vertical: 'middle', horizontal: 'center' };
           }
         });
       });
@@ -457,17 +457,22 @@ export const useJobsDb = () => {
       const buffer = await workbook.xlsx.writeBuffer();
       const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
       const fileUrl = URL.createObjectURL(blob);
-
-      const downloadLink = document.createElement('a');
-      downloadLink.setAttribute('href', fileUrl);
-      downloadLink.setAttribute('download', 'Job_application_vault.xlsx');
-      document.body.appendChild(downloadLink);
-      downloadLink.click();
-      document.body.removeChild(downloadLink);
-      URL.revokeObjectURL(fileUrl);
+      const filename = 'Job_application_vault.xlsx';
 
       toast.dismiss(loadingToast);
-      toast.success('Universal Vault Exported');
+
+      if (onDownloadTriggered) {
+        onDownloadTriggered(fileUrl, filename);
+      } else {
+        const downloadLink = document.createElement('a');
+        downloadLink.setAttribute('href', fileUrl);
+        downloadLink.setAttribute('download', filename);
+        document.body.appendChild(downloadLink);
+        downloadLink.click();
+        document.body.removeChild(downloadLink);
+        URL.revokeObjectURL(fileUrl);
+        toast.success('Universal Vault Exported');
+      }
     } catch (err: any) {
       console.error('Failed to export universal vault:', err);
       toast.dismiss(loadingToast);
@@ -509,7 +514,10 @@ export const useJobsDb = () => {
               body: {
                 action: 'batch_upload',
                 profileName: sanitizedName,
-                jobs: currentJobs
+                jobs: currentJobs.map(j => ({
+                  ...j,
+                  dateAdded: j.dateAdded ? normalizeDateStr(j.dateAdded) : ''
+                }))
               }
             },
             (res) => {

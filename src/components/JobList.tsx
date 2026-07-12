@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useCallback, useTransition, useRef } from 'react';
+import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { useStore } from '../store/useStore';
 import { Job } from '../types';
 import { Briefcase } from 'lucide-react';
@@ -12,7 +12,10 @@ import { CsvSyncSection } from './jobs/CsvSyncSection';
 import { ManualJobModal } from './jobs/ManualJobModal';
 import { ConfirmAppliedModal } from './jobs/ConfirmAppliedModal';
 import { useDebounce } from '../hooks/useDebounce';
-import { normalizeUrl, getJobId, extractCompanyFromUrl, extractRoleFromUrl, sanitizeProfileName } from '../lib/extractor';
+import { normalizeUrl, getJobId, extractCompanyFromUrl, extractRoleFromUrl, sanitizeProfileName, normalizeDateStr } from '../lib/extractor';
+import { SyncProgressBar } from './jobs/SyncProgressBar';
+import { CountdownBanner } from './jobs/CountdownBanner';
+import { WipeConfirmationModal } from './jobs/WipeConfirmationModal';
 
 interface SheetTab {
   name: string;
@@ -38,10 +41,21 @@ const fetchViaBackground = (
 };
 
 export const JobList = () => {
-  const { spreadsheetUrl, setSpreadsheetUrl, googleWebAppUrl, setGoogleWebAppUrl, jobs, setJobs, updateJobStatus, activeProfile, profiles, sheetTabs, setSheetTabs, selectedSheetIdx, setSelectedSheetIdx } = useStore();
+  const spreadsheetUrl = useStore(state => state.spreadsheetUrl);
+  const setSpreadsheetUrl = useStore(state => state.setSpreadsheetUrl);
+  const googleWebAppUrl = useStore(state => state.googleWebAppUrl);
+  const setGoogleWebAppUrl = useStore(state => state.setGoogleWebAppUrl);
+  const jobs = useStore(state => state.jobs);
+  const setJobs = useStore(state => state.setJobs);
+  const updateJobStatus = useStore(state => state.updateJobStatus);
+  const activeProfile = useStore(state => state.activeProfile);
+  const profiles = useStore(state => state.profiles);
+  const sheetTabs = useStore(state => state.sheetTabs);
+  const setSheetTabs = useStore(state => state.setSheetTabs);
+  const selectedSheetIdx = useStore(state => state.selectedSheetIdx);
+  const setSelectedSheetIdx = useStore(state => state.setSelectedSheetIdx);
   const activeProfileToUse = activeProfile || (profiles && profiles.length > 0 ? profiles[0] : null);
   const localDb = useJobsDb();
-  const [, startTransition] = useTransition();
   const [searchTerm, setSearchTerm] = useState('');
   const debouncedSearchTerm = useDebounce(searchTerm, 300);
 
@@ -62,6 +76,11 @@ export const JobList = () => {
   const [showSettings, setShowSettings] = useState(false);
   const [fetching, setFetching] = useState(false);
   const [activeTab, setActiveTab] = useState<'all' | 'not_applied' | 'applied' | 'skipped'>('all');
+  const [dateFilter, setDateFilter] = useState<'today' | 'yesterday' | 'yesterday_today' | 'last_7_days' | 'all' | 'custom'>('today');
+  const [showWipeModal, setShowWipeModal] = useState(false);
+  const [customDate, setCustomDate] = useState<string>(() => {
+    return new Date().toISOString().split('T')[0]; // "YYYY-MM-DD"
+  });
   const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
   const [pendingConfirmJob, setPendingConfirmJob] = useState<Job | null>(null);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
@@ -70,7 +89,7 @@ export const JobList = () => {
   const [showAddModal, setShowAddModal] = useState(false);
   const [addModalMode, setAddModalMode] = useState<'manual' | 'capture'>('manual');
 
-  const [layoutMode, setLayoutMode] = useState<'cards' | 'table'>('cards');
+  const layoutMode = 'cards';
   const [visibleRange, setVisibleRange] = useState({ start: 0, stop: 9 });
 
   const [autoConfirmEnabled, setAutoConfirmEnabled] = useState(false);
@@ -121,6 +140,26 @@ export const JobList = () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [pendingConfirmJob]);
+
+  // Listen for message from top window indicating a job was saved by shortcut
+  useEffect(() => {
+    const handlePostMessage = (event: MessageEvent) => {
+      if (event.data && event.data.type === 'JOB_SAVED_BY_SHORTCUT') {
+        const job = event.data.job;
+        setPendingConfirmJob(job);
+        
+        if (autoConfirmEnabled) {
+          setCountdown(autoConfirmDuration);
+          setIsTimerPaused(false);
+        } else {
+          setCountdown(null);
+          setShowConfirmModal(true);
+        }
+      }
+    };
+    window.addEventListener('message', handlePostMessage);
+    return () => window.removeEventListener('message', handlePostMessage);
+  }, [autoConfirmEnabled, autoConfirmDuration]);
 
   // Helper to diagnose errors and return advice
   const getErrorRecoveryDetails = (error: any) => {
@@ -221,13 +260,13 @@ export const JobList = () => {
 
               let defaultIdx = 0;
               if (activeProfileToUse) {
-                const profileNameLower = (activeProfileToUse.name || '')
-                  .replace(/[\\\/?:*\[\]]/g, '_').slice(0, 31).trim().toLowerCase();
-                const profileFullNameLower = (activeProfileToUse.full_name || '')
-                  .replace(/[\\\/?:*\[\]]/g, '_').slice(0, 31).trim().toLowerCase();
+                const normalizeCompare = (val: string) => val.toLowerCase().replace(/[-_\s\\\/?:*\[\]]+/g, '');
+                const profileNameNorm = normalizeCompare(activeProfileToUse.name || '');
+                const profileFullNameNorm = normalizeCompare(activeProfileToUse.full_name || '');
+                
                 const matchIdx = tabs.findIndex(t => {
-                  const sheetNameLower = t.name.replace(/[\\\/?:*\[\]]/g, '_').slice(0, 31).trim().toLowerCase();
-                  return sheetNameLower === profileNameLower || sheetNameLower === profileFullNameLower;
+                  const sheetNameNorm = normalizeCompare(t.name);
+                  return sheetNameNorm === profileNameNorm || sheetNameNorm === profileFullNameNorm;
                 });
                 if (matchIdx !== -1) defaultIdx = matchIdx;
               }
@@ -319,7 +358,11 @@ export const JobList = () => {
   }, [sheetTabs, setJobs]);
 
   const handleApply = (job: Job) => {
-    window.open(job.url, '_blank', 'noopener,noreferrer');
+    if (typeof chrome !== 'undefined' && chrome.tabs && chrome.tabs.create) {
+      chrome.tabs.create({ url: job.url });
+    } else {
+      window.open(job.url, '_blank', 'noopener,noreferrer');
+    }
     
     if (job.status === 'not_applied') {
       setPendingConfirmJob(job);
@@ -390,11 +433,33 @@ export const JobList = () => {
           }
         } else if (viewMode === 'sheet') {
           updateJobStatus(pendingConfirmJob.url, 'applied');
+          const normalizedUrl = normalizeUrl(pendingConfirmJob.url);
+          const exists = localJobs.some(j => normalizeUrl(j.url) === normalizedUrl);
+          if (!exists) {
+            try {
+              await localDb.addJob(
+                pendingConfirmJob.url,
+                pendingConfirmJob.company,
+                pendingConfirmJob.role,
+                'applied'
+              );
+            } catch (e) {
+              console.error('Failed to add sheet job to local database:', e);
+            }
+          } else {
+            await localDb.updateJobStatus(pendingConfirmJob.url, 'applied');
+          }
+          if (typeof chrome !== 'undefined' && chrome.runtime) {
+            chrome.runtime.sendMessage({ type: 'TRIGGER_BATCH_PUSH', force: true }).catch(() => {});
+          }
           toast.success('Applied!', {
             description: `Status updated to Applied for ${pendingConfirmJob.company}.`
           });
         } else {
-          localDb.updateJobStatus(pendingConfirmJob.url, 'applied');
+          await localDb.updateJobStatus(pendingConfirmJob.url, 'applied');
+          if (typeof chrome !== 'undefined' && chrome.runtime) {
+            chrome.runtime.sendMessage({ type: 'TRIGGER_BATCH_PUSH', force: true }).catch(() => {});
+          }
           toast.success('Applied!', {
             description: `Status updated to Applied for ${pendingConfirmJob.company}.`
           });
@@ -415,6 +480,97 @@ export const JobList = () => {
     setShowConfirmModal(false);
     setPendingConfirmJob(null);
   };
+
+  const handleResolveAllPendingConfirmations = async () => {
+    if (typeof chrome !== 'undefined' && chrome.storage) {
+      chrome.storage.local.get(['pendingConfirmationIds'], async (result) => {
+        const ids: string[] = result.pendingConfirmationIds || [];
+        if (ids.length === 0) return;
+
+        const isVaultJob = !!selectedVaultProfile;
+
+        for (const id of ids) {
+          const job = displayedJobs.find(j => j.id === id);
+          if (job) {
+            if (isVaultJob) {
+              try {
+                await localDb.addJob(job.url, job.company, job.role, 'applied');
+              } catch (e) {
+                console.error('Failed to add vault job:', e);
+              }
+            } else if (viewMode === 'sheet') {
+              updateJobStatus(job.url, 'applied');
+              const normalizedUrl = normalizeUrl(job.url);
+              const exists = localJobs.some(j => normalizeUrl(j.url) === normalizedUrl);
+              if (!exists) {
+                try {
+                  await localDb.addJob(job.url, job.company, job.role, 'applied');
+                } catch (e) {
+                  console.error('Failed to add sheet job to local database:', e);
+                }
+              } else {
+                await localDb.updateJobStatus(job.url, 'applied');
+              }
+            } else {
+              await localDb.updateJobStatus(job.url, 'applied');
+            }
+          }
+        }
+
+        if (!isVaultJob && typeof chrome !== 'undefined' && chrome.runtime) {
+          chrome.runtime.sendMessage({ type: 'TRIGGER_BATCH_PUSH', force: true }).catch(() => {});
+        }
+
+        chrome.storage.local.set({ pendingConfirmationIds: [] }, () => {
+          setPendingCount(0);
+          updateBadge(0);
+          toast.success('Confirmed!', {
+            description: `All pending applications marked as Applied.`
+          });
+        });
+      });
+    }
+  };
+
+  const handleDismissAllPendingConfirmations = () => {
+    if (typeof chrome !== 'undefined' && chrome.storage) {
+      chrome.storage.local.set({ pendingConfirmationIds: [] }, () => {
+        setPendingCount(0);
+        updateBadge(0);
+        toast.info('Pending confirmations cleared.');
+      });
+    }
+  };
+
+  const handleUpdateStatus = useCallback(async (url: string, status: Job['status']) => {
+    if (viewMode === 'sheet') {
+      updateJobStatus(url, status);
+      const normalizedUrl = normalizeUrl(url);
+      const exists = localJobs.some(j => normalizeUrl(j.url) === normalizedUrl);
+      if (!exists && status === 'applied') {
+        const job = jobs.find(j => normalizeUrl(j.url) === normalizedUrl);
+        if (job) {
+          try {
+            await localDb.addJob(job.url, job.company, job.role, 'applied');
+          } catch (e) {
+            console.error('Failed to add sheet job to local database:', e);
+          }
+        }
+      } else {
+        await localDb.updateJobStatus(url, status);
+      }
+      if (typeof chrome !== 'undefined' && chrome.runtime) {
+        chrome.runtime.sendMessage({ type: 'TRIGGER_BATCH_PUSH', force: true }).catch(() => {});
+      }
+    } else if (selectedVaultProfile) {
+      await localDb.updateVaultJobStatus(url, status);
+    } else {
+      await localDb.updateJobStatus(url, status);
+      if (typeof chrome !== 'undefined' && chrome.runtime) {
+        chrome.runtime.sendMessage({ type: 'TRIGGER_BATCH_PUSH', force: true }).catch(() => {});
+      }
+    }
+  }, [viewMode, selectedVaultProfile, updateJobStatus, localDb, localJobs, jobs]);
 
   const updateBadge = (count: number) => {
     if (typeof chrome !== 'undefined' && chrome.action) {
@@ -538,9 +694,9 @@ export const JobList = () => {
             else if (rawStatus === 'skipped') status = 'skipped';
           }
 
-          const dateAdded = dateIdx !== -1 && row[dateIdx] 
+          const dateAdded = normalizeDateStr(dateIdx !== -1 && row[dateIdx] 
             ? row[dateIdx].trim() 
-            : new Date().toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
+            : new Date().toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' }));
 
           parsedJobs.push({
             id: getJobId(normUrl),
@@ -597,49 +753,100 @@ export const JobList = () => {
   }, []);
 
   const handleClearAllJobs = () => {
-    toast('Wipe all saved jobs?', {
-      description: 'This will permanently delete ALL applications from your local database.',
-      duration: 8000,
-      action: {
-        label: 'Confirm Wipe',
-        onClick: async () => {
-          try {
-            await clearAllJobs();
-            await localDb.loadJobs();
-            toast.success('Local database cleared');
-          } catch (err: any) {
-            toast.error('Failed to clear database', { description: err.message });
-          }
-        }
-      },
-      cancel: {
-        label: 'Cancel',
-        onClick: () => {}
-      }
-    });
+    setShowWipeModal(true);
+  };
+
+  const handleConfirmedWipeOnly = async () => {
+    try {
+      await clearAllJobs();
+      await localDb.loadJobs();
+      toast.success('Local database cleared');
+    } catch (err: any) {
+      toast.error('Failed to clear database', { description: err.message });
+    }
   };
 
   const displayedJobs = viewMode === 'sheet' 
     ? jobs 
     : (selectedVaultProfile ? (vaultJobs as any[]) : localJobs);
 
-  const stats = useMemo(() => {
-    const total = displayedJobs.length;
-    const notApplied = displayedJobs.filter(j => j.status === 'not_applied').length;
-    const applied = displayedJobs.filter(j => j.status === 'applied').length;
-    const skipped = displayedJobs.filter(j => j.status === 'skipped').length;
-    return { total, notApplied, applied, skipped };
-  }, [displayedJobs]);
-
-  const filteredJobs = useMemo(() => {
+  const dateFilteredJobs = useMemo(() => {
     let result = displayedJobs;
 
+    const todayStr = new Date().toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
+    
+    const getYesterdayStr = () => {
+      const d = new Date();
+      d.setDate(d.getDate() - 1);
+      return d.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
+    };
+    const yesterdayStr = getYesterdayStr();
+
+    const parseDateStr = (dateStr?: string): Date | null => {
+      const normalized = normalizeDateStr(dateStr);
+      if (!normalized) return null;
+      const parts = normalized.split('/');
+      if (parts.length !== 3) return null;
+      const month = parseInt(parts[0], 10);
+      const day = parseInt(parts[1], 10);
+      const year = parseInt(parts[2], 10);
+      if (isNaN(month) || isNaN(day) || isNaN(year)) return null;
+      return new Date(year, month - 1, day);
+    };
+
+    const isWithinLast7Days = (dateStr?: string) => {
+      const d = parseDateStr(dateStr);
+      if (!d) return false;
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      d.setHours(0, 0, 0, 0);
+      const diffTime = today.getTime() - d.getTime();
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      return diffDays >= 0 && diffDays < 7;
+    };
+
+    const convertInputDateToLocaleStr = (inputDateStr: string): string => {
+      const parts = inputDateStr.split('-');
+      if (parts.length !== 3) return '';
+      return `${parts[1]}/${parts[2]}/${parts[0]}`;
+    };
+    const customDateLocaleStr = convertInputDateToLocaleStr(customDate);
+
+    if (dateFilter === 'today') {
+      result = result.filter(j => normalizeDateStr(j.dateAdded) === todayStr);
+    } else if (dateFilter === 'yesterday') {
+      result = result.filter(j => normalizeDateStr(j.dateAdded) === yesterdayStr);
+    } else if (dateFilter === 'yesterday_today') {
+      result = result.filter(j => {
+        const norm = normalizeDateStr(j.dateAdded);
+        return norm === todayStr || norm === yesterdayStr;
+      });
+    } else if (dateFilter === 'last_7_days') {
+      result = result.filter(j => isWithinLast7Days(j.dateAdded));
+    } else if (dateFilter === 'custom' && customDateLocaleStr) {
+      result = result.filter(j => normalizeDateStr(j.dateAdded) === customDateLocaleStr);
+    }
+
+    return result;
+  }, [displayedJobs, dateFilter, customDate]);
+
+  const stats = useMemo(() => {
+    const total = dateFilteredJobs.length;
+    const notApplied = dateFilteredJobs.filter(j => j.status === 'not_applied').length;
+    const applied = dateFilteredJobs.filter(j => j.status === 'applied').length;
+    const skipped = dateFilteredJobs.filter(j => j.status === 'skipped').length;
+    return { total, notApplied, applied, skipped };
+  }, [dateFilteredJobs]);
+
+  const filteredJobs = useMemo(() => {
+    let result = dateFilteredJobs;
+
     if (activeTab === 'not_applied') {
-      result = displayedJobs.filter(j => j.status === 'not_applied');
+      result = dateFilteredJobs.filter(j => j.status === 'not_applied');
     } else if (activeTab === 'applied') {
-      result = displayedJobs.filter(j => j.status === 'applied');
+      result = dateFilteredJobs.filter(j => j.status === 'applied');
     } else if (activeTab === 'skipped') {
-      result = displayedJobs.filter(j => j.status === 'skipped');
+      result = dateFilteredJobs.filter(j => j.status === 'skipped');
     }
 
     if (debouncedSearchTerm.trim()) {
@@ -651,8 +858,18 @@ export const JobList = () => {
       );
     }
 
-    return result;
-  }, [displayedJobs, activeTab, debouncedSearchTerm]);
+    // Sort by status: not_applied -> applied -> skipped (robust normalization)
+    return [...result].sort((a, b) => {
+      const getStatusWeight = (status: string | undefined | null) => {
+        if (!status) return 0;
+        const norm = status.trim().toLowerCase().replace(/\s+/g, '_');
+        if (norm === 'applied') return 1;
+        if (norm === 'skipped') return 2;
+        return 0; // to_apply, not_applied, or any other value defaults to top
+      };
+      return getStatusWeight(a.status) - getStatusWeight(b.status);
+    });
+  }, [dateFilteredJobs, activeTab, debouncedSearchTerm]);
 
 
 
@@ -663,62 +880,11 @@ export const JobList = () => {
 
   return (
     <div className="space-y-5 animate-in fade-in slide-in-from-bottom-4 duration-700 pb-20">
-      {/* Progress Bar */}
-      {syncProgress && (
-        <div className="p-4 bg-carbon border border-graphite rounded-2xl space-y-2 animate-in fade-in slide-in-from-top-1 duration-200">
-          <div className="flex justify-between text-[10px] font-bold uppercase tracking-wider">
-            <span className="text-accent flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-accent animate-ping" />
-              {syncProgress.stage}
-            </span>
-            <span className="text-ash">
-              {syncProgress.total > 0
-                ? `${Math.round((syncProgress.current / syncProgress.total) * 100)}%`
-                : ''}
-            </span>
-          </div>
-          {syncProgress.total > 0 && (
-            <div className="w-full h-1.5 bg-void border border-graphite rounded-full overflow-hidden">
-              <div 
-                className="h-full bg-accent transition-all duration-300 rounded-full" 
-                style={{ width: `${(syncProgress.current / syncProgress.total) * 100}%` }}
-              />
-            </div>
-          )}
-          <div className="text-[8px] text-muted text-right uppercase tracking-widest select-none">
-            Processed {syncProgress.current} of {syncProgress.total} items
-          </div>
-        </div>
-      )}
-
-      {/* Error Recovery Advice Alert */}
-      {activeError && (
-        <div className="p-3.5 bg-red-500/10 border border-red-500/25 rounded-2xl space-y-2 animate-in fade-in duration-300">
-          <div className="flex items-start justify-between gap-3">
-            <div className="space-y-0.5">
-              <h4 className="text-[10px] font-bold uppercase tracking-widest text-red-400">{activeError.title}</h4>
-              <p className="text-[9px] text-paper font-medium">{activeError.desc}</p>
-            </div>
-            <button 
-              onClick={() => setActiveError(null)}
-              className="text-ash hover:text-white text-[9px] font-bold"
-            >
-              Close
-            </button>
-          </div>
-          <p className="text-[8.5px] text-ash/80 leading-normal">{activeError.advice}</p>
-          <div className="flex justify-end pt-1">
-            <a 
-              href="https://github.com/janakirao966/clipstaff/issues/new" 
-              target="_blank" 
-              rel="noopener noreferrer"
-              className="text-[8.5px] font-bold text-accent hover:underline flex items-center gap-1"
-            >
-              Report Bug / Ask Help
-            </a>
-          </div>
-        </div>
-      )}
+      <SyncProgressBar
+        syncProgress={syncProgress}
+        activeError={activeError}
+        onCloseError={() => setActiveError(null)}
+      />
       <CsvSyncSection
         viewMode={viewMode}
         setViewMode={setViewMode}
@@ -729,10 +895,10 @@ export const JobList = () => {
         fetching={fetching}
         handleSyncJobs={handleSyncJobs}
         handleImportCSVFile={handleImportCSVFile}
-        onExportCSV={() => exportToExcel(displayedJobs, activeProfileToUse?.full_name || activeProfileToUse?.name)}
+        onExportCSV={() => exportToExcel(dateFilteredJobs, activeProfileToUse?.full_name || activeProfileToUse?.name)}
         onOpenAddModal={onOpenAddModal}
         onClearJobs={handleClearAllJobs}
-        onExportMergeUniversal={(file) => exportMergeUniversal(file, activeProfileToUse?.full_name || activeProfileToUse?.name || 'Default_Profile', localJobs)}
+        onExportMergeUniversal={(file) => exportMergeUniversal(file, activeProfileToUse?.full_name || activeProfileToUse?.name || 'Default_Profile', dateFilteredJobs)}
         onImportUniversalVault={importUniversalVault}
         vaultProfiles={useMemo(() => {
           const activeSanitized = sanitizeProfileName(activeProfileToUse?.full_name || activeProfileToUse?.name).toLowerCase();
@@ -745,7 +911,7 @@ export const JobList = () => {
         setSelectedVaultProfile={setSelectedVaultProfile}
         googleWebAppUrl={googleWebAppUrl}
         setGoogleWebAppUrl={setGoogleWebAppUrl}
-        onExportMergeGoogleSheet={() => exportMergeGoogleSheet(googleWebAppUrl, activeProfileToUse?.full_name || activeProfileToUse?.name || 'Default_Profile', localJobs)}
+        onExportMergeGoogleSheet={() => exportMergeGoogleSheet(googleWebAppUrl, activeProfileToUse?.full_name || activeProfileToUse?.name || 'Default_Profile', dateFilteredJobs)}
         sheetTabNames={sheetTabs.map(t => t.name)}
         selectedSheetIdx={selectedSheetIdx}
         onSheetTabChange={handleSheetTabChange}
@@ -775,86 +941,30 @@ export const JobList = () => {
         </div>
       </div>
 
-      {pendingConfirmJob && (
-        <div className="p-3.5 bg-accent/10 border border-accent/25 rounded-2xl flex items-center justify-between gap-3 animate-in fade-in slide-in-from-top-2 duration-300 select-none">
-          <div className="min-w-0 flex-1 space-y-0.5">
-            <h4 className="text-[8px] font-black text-accent uppercase tracking-widest flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-accent animate-ping" />
-              {countdown !== null
-                ? `Auto-confirming in ${countdown}s${isTimerPaused ? ' (Paused)' : ''}`
-                : 'Did you apply?'}
-            </h4>
-            <p className="text-[10px] text-paper truncate font-semibold">
-              {pendingConfirmJob.role}
-            </p>
-            <p className="text-[9px] text-ash truncate">
-              at <span className="text-mist font-medium">{pendingConfirmJob.company}</span>
-            </p>
-          </div>
-          <div className="flex items-center gap-1.5 shrink-0">
-            {countdown !== null && (
-              <button
-                onClick={() => setIsTimerPaused(!isTimerPaused)}
-                className="px-2 py-1 bg-white/5 hover:bg-white/10 text-[8px] text-ash hover:text-mist border border-graphite rounded-lg font-bold uppercase tracking-wider transition-all"
-              >
-                {isTimerPaused ? 'Resume' : 'Pause'}
-              </button>
-            )}
-            <button
-              onClick={() => handleConfirmApplied(true)}
-              className="px-2.5 py-1 bg-pulse-green/10 hover:bg-pulse-green/20 text-pulse-green border border-pulse-green/25 rounded-lg text-[8px] font-black uppercase tracking-wider transition-all"
-            >
-              Yes
-            </button>
-            <button
-              onClick={() => handleConfirmApplied(false)}
-              className="px-2.5 py-1 bg-white/5 hover:bg-white/10 text-ash border border-graphite rounded-lg text-[8px] font-black uppercase tracking-wider transition-all"
-            >
-              No
-            </button>
-          </div>
-        </div>
-      )}
-
-      {pendingCount > 0 && !pendingConfirmJob && (
-        <div className="flex items-center gap-1.5 p-2.5 bg-accent/5 border border-accent/15 rounded-xl text-[9px] text-accent font-medium select-none animate-in fade-in duration-300">
-          <span className="w-1.5 h-1.5 rounded-full bg-accent animate-pulse" />
-          <span>You have {pendingCount} application status {pendingCount === 1 ? 'confirmation' : 'confirmations'} pending.</span>
-        </div>
-      )}
+      <CountdownBanner
+        pendingConfirmJob={pendingConfirmJob}
+        countdown={countdown}
+        isTimerPaused={isTimerPaused}
+        setIsTimerPaused={setIsTimerPaused}
+        handleConfirmApplied={handleConfirmApplied}
+        pendingCount={pendingCount}
+        handleResolveAllPendingConfirmations={handleResolveAllPendingConfirmations}
+        handleDismissAllPendingConfirmations={handleDismissAllPendingConfirmations}
+      />
 
       <JobFilters
         viewMode={viewMode}
         searchTerm={searchTerm}
         setSearchTerm={setSearchTerm}
         activeTab={activeTab}
-        setActiveTab={(tab) => startTransition(() => {
-          setActiveTab(tab);
-        })}
+        setActiveTab={setActiveTab}
+        dateFilter={dateFilter}
+        setDateFilter={setDateFilter}
+        customDate={customDate}
+        setCustomDate={setCustomDate}
       />
 
-      <div className="flex justify-end gap-1.5 px-1">
-        <button
-          onClick={() => setLayoutMode('cards')}
-          className={`px-3 py-1.5 rounded-lg text-[9px] font-bold uppercase tracking-wider transition-all border ${
-            layoutMode === 'cards'
-              ? 'bg-white/5 border-graphite text-accent'
-              : 'bg-transparent border-transparent text-ash hover:text-mist hover:bg-white/5'
-          }`}
-        >
-          Cards View
-        </button>
-        <button
-          onClick={() => setLayoutMode('table')}
-          className={`px-3 py-1.5 rounded-lg text-[9px] font-bold uppercase tracking-wider transition-all border ${
-            layoutMode === 'table'
-              ? 'bg-white/5 border-graphite text-accent'
-              : 'bg-transparent border-transparent text-ash hover:text-mist hover:bg-white/5'
-          }`}
-        >
-          Spreadsheet View
-        </button>
-      </div>
+
 
       {filteredJobs.length > 0 && (
         <div className="text-[9px] font-bold text-ash uppercase tracking-wider px-1 text-right mb-1 select-none">
@@ -885,7 +995,7 @@ export const JobList = () => {
             selectedSheetIdx={selectedSheetIdx}
             onApply={handleApply}
             onDelete={selectedVaultProfile ? localDb.deleteVaultJob : localDb.deleteJob}
-            onUpdateStatus={viewMode === 'sheet' ? updateJobStatus : (selectedVaultProfile ? localDb.updateVaultJobStatus : localDb.updateJobStatus)}
+            onUpdateStatus={handleUpdateStatus}
             activeDropdown={activeDropdown}
             setActiveDropdown={setActiveDropdown}
             onItemsRendered={({ visibleStartIndex, visibleStopIndex }) => setVisibleRange({ start: visibleStartIndex, stop: visibleStopIndex })}
@@ -905,6 +1015,18 @@ export const JobList = () => {
         onClose={() => handleConfirmApplied(false)}
         pendingJob={pendingConfirmJob}
         onConfirm={handleConfirmApplied}
+      />
+
+      <WipeConfirmationModal
+        isOpen={showWipeModal}
+        onClose={() => setShowWipeModal(false)}
+        onConfirmWipeOnly={handleConfirmedWipeOnly}
+        onExportMergeUniversal={async (file, onDownload) => {
+          await exportMergeUniversal(file, activeProfileToUse?.full_name || activeProfileToUse?.name || 'Default_Profile', localJobs, onDownload);
+        }}
+        onExportCSV={async (onDownload) => {
+          await exportToExcel(localJobs, activeProfileToUse?.full_name || activeProfileToUse?.name, onDownload);
+        }}
       />
     </div>
   );

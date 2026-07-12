@@ -90,7 +90,7 @@ export const JobTableLayout = ({
 
                     {activeDropdown === job.id && (
                       <div 
-                        className="absolute right-0 bottom-full mb-1 w-24 bg-[#0D0D0D] border border-white/10 rounded-lg shadow-premium z-50 py-1 overflow-hidden"
+                        className="absolute right-0 top-full mt-1 w-24 bg-[#0D0D0D] border border-white/10 rounded-lg shadow-premium z-50 py-1 overflow-hidden"
                         onClick={(e) => e.stopPropagation()}
                       >
                         {(['not_applied', 'applied', 'skipped'] as const).map((status) => {
