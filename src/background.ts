@@ -474,21 +474,32 @@ if (typeof chrome !== 'undefined' && chrome.notifications) {
   });
 }
 
+async function lockedUpdateStorage(updater: (state: any) => void): Promise<void> {
+  const result = await new Promise<any>((resolve) => {
+    chrome.storage.local.get(['clipstaff-storage'], resolve);
+  });
+  const dataStr = result['clipstaff-storage'];
+  if (dataStr) {
+    try {
+      const parsed = JSON.parse(dataStr);
+      if (parsed && parsed.state) {
+        updater(parsed.state);
+        await new Promise<void>((resolve) => {
+          chrome.storage.local.set({ 'clipstaff-storage': JSON.stringify(parsed) }, () => resolve());
+        });
+      }
+    } catch (e) {
+      console.error('[SW Storage] Failed to update storage JSON:', e);
+    }
+  }
+}
+
 function broadcastSyncStatus(status: 'synced' | 'syncing' | 'error') {
   chrome.runtime.sendMessage({ type: 'SYNC_STATUS_CHANGED', status }).catch(() => {});
-  chrome.storage.local.get(['clipstaff-storage'], (result) => {
-    const dataStr = result['clipstaff-storage'];
-    if (dataStr) {
-      try {
-        const parsed = JSON.parse(dataStr);
-        if (parsed && parsed.state) {
-          parsed.state.syncStatus = status;
-          chrome.storage.local.set({ 'clipstaff-storage': JSON.stringify(parsed) });
-        }
-      } catch (e) {
-        console.error('[SW Sync] Failed to update syncStatus in persisted state:', e);
-      }
-    }
+  lockedUpdateStorage((state) => {
+    state.syncStatus = status;
+  }).catch((err) => {
+    console.error('[SW Sync] Failed to broadcast sync status via storage:', err);
   });
 }
 
@@ -575,7 +586,8 @@ async function handleBatchPushUpload(forceSync = false) {
       const chunk = eligibleJobs.slice(i, i + chunkSize);
       
       try {
-        const chunkPromise = fetchWithTimeout(googleWebAppUrl.trim(), {
+        const syncUrl = `${googleWebAppUrl.trim()}${googleWebAppUrl.includes('?') ? '&' : '?'}reqToken=${crypto.randomUUID()}`;
+        const chunkPromise = fetchWithTimeout(syncUrl, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'

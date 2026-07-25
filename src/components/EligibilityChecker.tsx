@@ -42,6 +42,19 @@ export const EligibilityChecker = () => {
         toast.error('No active tab detected');
         return;
       }
+
+      const url = tab.url || '';
+      const isRestricted = url.startsWith('chrome://') || 
+                           url.startsWith('chrome-extension://') || 
+                           url.startsWith('about:') || 
+                           url.startsWith('file://') ||
+                           url.includes('chrome.google.com/webstore');
+      if (isRestricted) {
+        toast.error('Capture Blocked', {
+          description: 'Text capture is restricted on Chrome system or store pages.'
+        });
+        return;
+      }
       
       // Execute selection extraction script
       chrome.scripting.executeScript({

@@ -108,6 +108,20 @@ function MainContent() {
         });
         return;
       }
+
+      const url = tab.url || '';
+      const isRestricted = url.startsWith('chrome://') || 
+                           url.startsWith('chrome-extension://') || 
+                           url.startsWith('about:') || 
+                           url.startsWith('file://') ||
+                           url.includes('chrome.google.com/webstore');
+      if (isRestricted) {
+        toast.error('Autofill Blocked', {
+          description: 'Autofill is restricted on Chrome system or store pages.'
+        });
+        return;
+      }
+
       await chrome.scripting.executeScript({
         target: { tabId: tab.id },
         func: autofillForm,

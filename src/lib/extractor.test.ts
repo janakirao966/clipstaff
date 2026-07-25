@@ -63,6 +63,15 @@ describe('Metadata Extraction', () => {
 
     it('should extract correct company from Greenhouse URLs', () => {
       expect(extractCompanyFromUrl('https://job-boards.greenhouse.io/embed/job_app?for=etechgroup')).toBe('Etech Group');
+      expect(extractCompanyFromUrl('https://boards.greenhouse.io/etechgroup/jobs/4820129004')).toBe('Etech Group');
+    });
+
+    it('should extract correct company from Lever URLs', () => {
+      expect(extractCompanyFromUrl('https://jobs.lever.co/google/1a87e5b1-7bc9-4c8d-b0df-0bfa7c5c2d3a/apply')).toBe('Google');
+    });
+
+    it('should extract correct company from UKG/Ultipro URLs using pathname fallback', () => {
+      expect(extractCompanyFromUrl('https://recruiting2.ultipro.com/CAR1002CARR/JobBoard/56d0bb2b/OpportunityDetail?opportunityId=73')).toBe('Car1002carr');
     });
 
     it('should extract correct company from Oracle Cloud candidate sites', () => {
@@ -86,6 +95,11 @@ describe('Metadata Extraction', () => {
 
     it('should parse actual roles containing hyphens or underscores', () => {
       expect(extractRoleFromUrl('https://bakerhughes.wd5.myworkdayjobs.com/job/Field-Service-Electrical-Engineer_R160331/apply')).toBe('Field Service Electrical Engineer R160331');
+    });
+
+    it('should parse single-word role titles', () => {
+      expect(extractRoleFromUrl('https://jobs.lever.co/google/Developer/apply')).toBe('Developer');
+      expect(extractRoleFromUrl('https://caterpillar.myworkdayjobs.com/en-US/careers/job/Peoria-IL/Manager')).toBe('Manager');
     });
   });
 

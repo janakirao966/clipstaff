@@ -400,7 +400,7 @@ export const JobList = () => {
     }
   };
 
-  const handleConfirmApplied = async (applied: boolean) => {
+  const handleConfirmApplied = async (status: 'applied' | 'not-yet' | 'skipped') => {
     if (pendingConfirmJob) {
       const isVaultJob = !!selectedVaultProfile;
 
@@ -416,23 +416,32 @@ export const JobList = () => {
         });
       }
 
-      if (applied) {
+      if (status === 'applied' || status === 'skipped') {
+        const finalStatus = status;
+        
         if (isVaultJob) {
           try {
             await localDb.addJob(
               pendingConfirmJob.url,
               pendingConfirmJob.company,
               pendingConfirmJob.role,
-              'applied'
+              finalStatus
             );
-            toast.success('Applied & Saved!', {
-              description: `Saved to your local profile from ${selectedVaultProfile}'s vault.`
-            });
+            await localDb.updateVaultJobStatus(pendingConfirmJob.url, finalStatus);
+            if (finalStatus === 'applied') {
+              toast.success('Applied & Saved!', {
+                description: `Saved to your local profile from ${selectedVaultProfile}'s vault.`
+              });
+            } else {
+              toast.info('Skipped', {
+                description: `Marked ${pendingConfirmJob.company} as skipped.`
+              });
+            }
           } catch (e: any) {
             toast.error('Save Failed', { description: e.message || 'Could not save to local database.' });
           }
         } else if (viewMode === 'sheet') {
-          updateJobStatus(pendingConfirmJob.url, 'applied');
+          updateJobStatus(pendingConfirmJob.url, finalStatus);
           const normalizedUrl = normalizeUrl(pendingConfirmJob.url);
           const exists = localJobs.some(j => normalizeUrl(j.url) === normalizedUrl);
           if (!exists) {
@@ -441,28 +450,40 @@ export const JobList = () => {
                 pendingConfirmJob.url,
                 pendingConfirmJob.company,
                 pendingConfirmJob.role,
-                'applied'
+                finalStatus
               );
             } catch (e) {
               console.error('Failed to add sheet job to local database:', e);
             }
           } else {
-            await localDb.updateJobStatus(pendingConfirmJob.url, 'applied');
+            await localDb.updateJobStatus(pendingConfirmJob.url, finalStatus);
           }
           if (typeof chrome !== 'undefined' && chrome.runtime) {
             chrome.runtime.sendMessage({ type: 'TRIGGER_BATCH_PUSH', force: true }).catch(() => {});
           }
-          toast.success('Applied!', {
-            description: `Status updated to Applied for ${pendingConfirmJob.company}.`
-          });
+          if (finalStatus === 'applied') {
+            toast.success('Applied!', {
+              description: `Status updated to Applied for ${pendingConfirmJob.company}.`
+            });
+          } else {
+            toast.info('Skipped', {
+              description: `Marked ${pendingConfirmJob.company} as skipped.`
+            });
+          }
         } else {
-          await localDb.updateJobStatus(pendingConfirmJob.url, 'applied');
+          await localDb.updateJobStatus(pendingConfirmJob.url, finalStatus);
           if (typeof chrome !== 'undefined' && chrome.runtime) {
             chrome.runtime.sendMessage({ type: 'TRIGGER_BATCH_PUSH', force: true }).catch(() => {});
           }
-          toast.success('Applied!', {
-            description: `Status updated to Applied for ${pendingConfirmJob.company}.`
-          });
+          if (finalStatus === 'applied') {
+            toast.success('Applied!', {
+              description: `Status updated to Applied for ${pendingConfirmJob.company}.`
+            });
+          } else {
+            toast.info('Skipped', {
+              description: `Marked ${pendingConfirmJob.company} as skipped.`
+            });
+          }
         }
       } else {
         if (isVaultJob) {
@@ -495,6 +516,7 @@ export const JobList = () => {
             if (isVaultJob) {
               try {
                 await localDb.addJob(job.url, job.company, job.role, 'applied');
+                await localDb.updateVaultJobStatus(job.url, 'applied');
               } catch (e) {
                 console.error('Failed to add vault job:', e);
               }
@@ -626,7 +648,7 @@ export const JobList = () => {
         if (prev <= 1) {
           clearInterval(timerRef.current!);
           timerRef.current = null;
-          handleConfirmApplied(true);
+          handleConfirmApplied('applied');
           return null;
         }
         return prev - 1;

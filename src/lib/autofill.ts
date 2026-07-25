@@ -2,7 +2,7 @@
  * ClipStaff Autofill Engine - Modular ATS filling module
  */
 
-export function autofillForm(profile: any): number {
+export function autofillForm(profile: any, isReRun = false): number {
   const parseDateString = (dateStr: string) => {
     const clean = (dateStr || '').trim();
     if (!clean) return { month: '', monthNum: '', year: '' };
@@ -64,6 +64,13 @@ export function autofillForm(profile: any): number {
   let eduEndCount = 0;
 
   inputs.forEach((el: any) => {
+    // If it is a dynamic re-run, skip already filled fields to avoid overwriting typed content
+    if (isReRun && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT')) {
+      if (el.value && el.value.trim() !== '') {
+        return;
+      }
+    }
+
     const id = (el.id || '').toLowerCase();
     const name = (el.name || '').toLowerCase();
     const placeholder = (el.placeholder || '').toLowerCase();
@@ -489,6 +496,38 @@ export function autofillForm(profile: any): number {
       count++;
     }
   });
+
+  // Setup MutationObserver to watch for dynamic step additions safely
+  if (!(window as any).__clipstaffObserver) {
+    let debounceTimeout: any = null;
+    const observer = new MutationObserver((mutations) => {
+      let hasNewElements = false;
+      for (const m of mutations) {
+        for (const node of Array.from(m.addedNodes)) {
+          if (node.nodeType === Node.ELEMENT_NODE) {
+            const addedEl = node as HTMLElement;
+            if (addedEl.id !== 'clipstaff-sidebar-host' && !addedEl.closest('#clipstaff-sidebar-host')) {
+              hasNewElements = true;
+              break;
+            }
+          }
+        }
+        if (hasNewElements) break;
+      }
+
+      if (hasNewElements) {
+        if (debounceTimeout) clearTimeout(debounceTimeout);
+        debounceTimeout = setTimeout(() => {
+          observer.disconnect();
+          autofillForm(profile, true);
+          observer.observe(document.documentElement, { childList: true, subtree: true });
+        }, 500);
+      }
+    });
+
+    (window as any).__clipstaffObserver = observer;
+    observer.observe(document.documentElement, { childList: true, subtree: true });
+  }
 
   return count;
 }

@@ -39,6 +39,7 @@ function getRawCompanyFromUrl(urlStr: string): string {
   try {
     const url = new URL(urlStr);
     const host = url.hostname.toLowerCase();
+    const pathParts = url.pathname.split('/').filter(Boolean);
 
     // 1. Workday specific
     if (host.includes('myworkdayjobs.com')) {
@@ -46,7 +47,6 @@ function getRawCompanyFromUrl(urlStr: string): string {
       if (hostParts[0] && !['careers', 'jobs', 'www', 'myworkdayjobs'].includes(hostParts[0])) {
         return cleanString(hostParts[0]);
       }
-      const pathParts = url.pathname.split('/').filter(Boolean);
       if (pathParts[0]) {
         if (/^[a-z]{2}-[a-z]{2}$/i.test(pathParts[0]) || ['external', 'jobs'].includes(pathParts[0].toLowerCase())) {
           if (pathParts[1]) return cleanString(pathParts[1]);
@@ -59,14 +59,35 @@ function getRawCompanyFromUrl(urlStr: string): string {
     if (host.includes('greenhouse.io')) {
       const forParam = url.searchParams.get('for');
       if (forParam) return cleanString(forParam);
-      const pathParts = url.pathname.split('/').filter(Boolean);
       const companyIndex = pathParts.indexOf('embed') !== -1 ? pathParts.indexOf('embed') + 1 : 0;
-      if (pathParts[companyIndex] && pathParts[companyIndex] !== 'job_app') {
+      if (pathParts[companyIndex] && !['job_app', 'job_board', 'jobs'].includes(pathParts[companyIndex].toLowerCase())) {
         return cleanString(pathParts[companyIndex]);
+      }
+      if (pathParts[companyIndex + 1]) {
+        return cleanString(pathParts[companyIndex + 1]);
       }
     }
 
-    // 3. Oracle Cloud specific
+    // 3. Lever specific
+    if (host.includes('lever.co')) {
+      if (pathParts[0] && !['embed', 'jobs'].includes(pathParts[0].toLowerCase())) {
+        return cleanString(pathParts[0]);
+      }
+      if (pathParts[1]) return cleanString(pathParts[1]);
+    }
+
+    // 4. UKG / Ultimate Software specific
+    if (host.includes('ukg.net') || host.includes('ultipro.com')) {
+      if (pathParts[0] && !['rec', 'pro', 'jobboard', 'opportunitydetail'].includes(pathParts[0].toLowerCase())) {
+        return cleanString(pathParts[0]);
+      }
+      const hostParts = host.split('.');
+      if (hostParts[0] && !['rec', 'pro', 'www', 't', 'e', 'recruiting2', 'recruiting'].includes(hostParts[0])) {
+        return cleanString(hostParts[0]);
+      }
+    }
+
+    // 5. Oracle Cloud specific
     if (host.includes('oraclecloud.com')) {
       const hostParts = host.split('.');
       if (hostParts[0] && !['fa', 'hcm', 'www'].includes(hostParts[0])) {
@@ -75,23 +96,21 @@ function getRawCompanyFromUrl(urlStr: string): string {
       return 'Oracle';
     }
 
-    // 4. ADP specific
+    // 6. ADP specific
     if (host.includes('adp.com')) {
-      const pathParts = url.pathname.split('/').filter(Boolean);
       if (pathParts[0] && pathParts[0] !== 'cx') return cleanString(pathParts[0]);
       if (pathParts[1] && pathParts[1] !== 'cx') return cleanString(pathParts[1]);
     }
 
-    // 5. SmartRecruiters specific
+    // 7. SmartRecruiters specific
     if (host.includes('smartrecruiters.com')) {
-      const pathParts = url.pathname.split('/').filter(Boolean);
       const companyIdx = pathParts.indexOf('company');
       if (companyIdx !== -1 && pathParts[companyIdx + 1]) {
         return cleanString(pathParts[companyIdx + 1]);
       }
     }
 
-    // 6. SuccessFactors specific
+    // 8. SuccessFactors specific
     if (host.includes('successfactors.')) {
       const companyParam = url.searchParams.get('company') || url.searchParams.get('companyId');
       if (companyParam) return cleanString(companyParam);
@@ -101,26 +120,8 @@ function getRawCompanyFromUrl(urlStr: string): string {
       }
     }
 
-    // 7. UKG / Ultimate Software specific
-    if (host.includes('ukg.net') || host.includes('ultipro.com')) {
-      const hostParts = host.split('.');
-      if (hostParts[0] && !['rec', 'pro', 'www', 't', 'e'].includes(hostParts[0])) {
-        return cleanString(hostParts[0]);
-      }
-    }
-
-    // 8. JobDiva specific
-    if (host.includes('jobdiva.com')) {
-      const hostParts = host.split('.');
-      if (hostParts[0] && !/^www\d*$/i.test(hostParts[0])) {
-        return cleanString(hostParts[0]);
-      }
-      return 'JobDiva';
-    }
-
     // 9. Paylocity specific
     if (host.includes('paylocity.com')) {
-      const pathParts = url.pathname.split('/').filter(Boolean);
       const applyIdx = pathParts.findIndex(p => p.toLowerCase() === 'apply');
       if (applyIdx !== -1 && pathParts[applyIdx + 2]) {
         return cleanString(pathParts[applyIdx + 2]);
@@ -171,31 +172,29 @@ export function extractRoleFromUrl(urlStr: string): string {
     ];
 
     for (let i = segments.length - 1; i >= 0; i--) {
-      const segment = segments[i];
-      if (/^\d+$/.test(segment) || segment.length < 5) continue;
-      
-      let cleanSeg = segment.split(/[?#]/)[0];
+      let cleanSeg = segments[i].split(/[?#]/)[0];
       cleanSeg = cleanSeg.replace(/\.(php|html|htm|aspx|jsp)$/i, '');
 
-      if (genericKeywords.includes(cleanSeg.toLowerCase().trim())) {
+      const cleanLower = cleanSeg.toLowerCase().trim();
+      
+      // Skip if generic, numeric, or too short
+      if (genericKeywords.includes(cleanLower) || /^\d+$/.test(cleanSeg) || cleanSeg.length < 3) {
         continue;
       }
 
-      cleanSeg = cleanSeg
-        .replace(/[-_]\d+$/, '')
-        .replace(/^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}$/, '');
-
-      if (cleanSeg.includes('-') || cleanSeg.includes('_')) {
-        return cleanString(cleanSeg);
+      // Skip UUIDs
+      if (/^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}$/.test(cleanSeg)) {
+        continue;
       }
-    }
 
-    const lastSeg = segments[segments.length - 1];
-    if (lastSeg && !/^\d+$/.test(lastSeg)) {
-      let cleanLast = lastSeg.split(/[?#]/)[0].replace(/\.(php|html|htm|aspx|jsp)$/i, '');
-      if (!genericKeywords.includes(cleanLast.toLowerCase().trim())) {
-        return cleanString(cleanLast);
+      // Skip location or tenant segments that exactly match the company name
+      const companyVal = extractCompanyFromUrl(urlStr).toLowerCase().replace(/\s+/g, '');
+      if (cleanLower.replace(/[-_]/g, '') === companyVal) {
+        continue;
       }
+
+      cleanSeg = cleanSeg.replace(/[-_]\d+$/, '');
+      return cleanString(cleanSeg);
     }
 
     return 'Job Opportunity';

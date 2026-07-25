@@ -11,8 +11,17 @@ let activeProfileCache: any = null;
 let lastFocusedInput: HTMLElement | null = null;
 let layoutModeCache = 'overlay'; // default to overlay
 
-document.addEventListener('focusin', (e) => {
-  const target = e.target as HTMLElement;
+function getDeepActiveElement(root: Document | ShadowRoot = document): HTMLElement | null {
+  const activeEl = root.activeElement as HTMLElement;
+  if (!activeEl) return null;
+  if (activeEl.shadowRoot) {
+    return getDeepActiveElement(activeEl.shadowRoot);
+  }
+  return activeEl;
+}
+
+document.addEventListener('focusin', () => {
+  const target = getDeepActiveElement();
   if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
     lastFocusedInput = target;
   }
@@ -129,33 +138,42 @@ if (window.self === window.top) {
   toggleBtn.appendChild(logoImg);
 
   const injectSidebar = () => {
+    // Prevent execution on XML feeds, image files, or PDF displays
+    if (!(document instanceof HTMLDocument) && document.contentType !== 'text/html') {
+      return;
+    }
+
     if (!document.getElementById('clipstaff-sidebar-host')) {
-      iframe.setAttribute('title', 'ClipStaff Sidebar');
-      toggleBtn.setAttribute('aria-label', 'Toggle ClipStaff Sidebar');
-      toggleBtn.setAttribute('aria-expanded', 'false');
-      toggleBtn.setAttribute('role', 'button');
-      toggleBtn.setAttribute('tabindex', '0');
-      
-      toggleBtn.addEventListener('focus', () => {
-        toggleBtn.style.setProperty('outline', '2px solid #e4f222', 'important');
-        toggleBtn.style.setProperty('outline-offset', '-2px', 'important');
-      });
-      toggleBtn.addEventListener('blur', () => {
-        toggleBtn.style.removeProperty('outline');
-        toggleBtn.style.removeProperty('outline-offset');
-      });
+      try {
+        iframe.setAttribute('title', 'ClipStaff Sidebar');
+        toggleBtn.setAttribute('aria-label', 'Toggle ClipStaff Sidebar');
+        toggleBtn.setAttribute('aria-expanded', 'false');
+        toggleBtn.setAttribute('role', 'button');
+        toggleBtn.setAttribute('tabindex', '0');
+        
+        toggleBtn.addEventListener('focus', () => {
+          toggleBtn.style.setProperty('outline', '2px solid #e4f222', 'important');
+          toggleBtn.style.setProperty('outline-offset', '-2px', 'important');
+        });
+        toggleBtn.addEventListener('blur', () => {
+          toggleBtn.style.removeProperty('outline');
+          toggleBtn.style.removeProperty('outline-offset');
+        });
 
-      shadowRoot.appendChild(iframe);
-      shadowRoot.appendChild(toggleBtn);
-      document.documentElement.appendChild(host);
+        shadowRoot.appendChild(iframe);
+        shadowRoot.appendChild(toggleBtn);
+        document.documentElement.appendChild(host);
 
-      // Watch for SPA hydration DOM wipes and restore host node automatically
-      const observer = new MutationObserver(() => {
-        if (!document.getElementById('clipstaff-sidebar-host')) {
-          document.documentElement.appendChild(host);
-        }
-      });
-      observer.observe(document.documentElement, { childList: true });
+        // Watch for SPA hydration DOM wipes and restore host node automatically
+        const observer = new MutationObserver(() => {
+          if (!document.getElementById('clipstaff-sidebar-host')) {
+            document.documentElement.appendChild(host);
+          }
+        });
+        observer.observe(document.documentElement, { childList: true });
+      } catch (err) {
+        console.warn('ClipStaff: Failed to bootstrap content script:', err);
+      }
     }
   };
 

@@ -8,7 +8,7 @@ interface ConfirmAppliedModalProps {
   isOpen: boolean;
   onClose: () => void;
   pendingJob: Job | null;
-  onConfirm: (applied: boolean) => void;
+  onConfirm: (status: 'applied' | 'not-yet' | 'skipped') => void;
 }
 
 export const ConfirmAppliedModal = ({
@@ -25,10 +25,10 @@ export const ConfirmAppliedModal = ({
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Enter') {
         e.preventDefault();
-        onConfirm(true);
+        onConfirm('applied');
       } else if (e.key === 'Escape') {
         e.preventDefault();
-        onConfirm(false);
+        onConfirm('not-yet');
       }
     };
 
@@ -88,22 +88,31 @@ export const ConfirmAppliedModal = ({
           </div>
         )}
 
-        <div className="flex gap-3 justify-center pt-2 select-none">
+        <div className="flex flex-col gap-2 justify-center pt-2 select-none items-center">
+          <div className="flex gap-3 justify-center w-full">
+            <Button
+              variant="secondary"
+              onClick={() => onConfirm('not-yet')}
+              className="text-[10px] w-28 py-2.5 hover:bg-white/5"
+              title="Press Esc to cancel"
+            >
+              No, Not Yet
+            </Button>
+            <Button
+              variant="primary"
+              onClick={() => onConfirm('applied')}
+              className="text-[10px] w-28 py-2.5 bg-pulse-green hover:bg-pulse-green/90 border border-pulse-green/20 text-white shadow-pulse-green/25 shadow-lg"
+              title="Press Enter to confirm"
+            >
+              Yes, Applied
+            </Button>
+          </div>
           <Button
             variant="secondary"
-            onClick={() => onConfirm(false)}
-            className="text-[10px] w-28 py-2.5 hover:bg-white/5"
-            title="Press Esc to cancel"
+            onClick={() => onConfirm('skipped')}
+            className="text-[10px] w-full max-w-[236px] py-2 text-red-400 hover:text-red-300 hover:bg-red-500/10 border-red-500/20"
           >
-            No, Not Yet
-          </Button>
-          <Button
-            variant="primary"
-            onClick={() => onConfirm(true)}
-            className="text-[10px] w-28 py-2.5 bg-pulse-green hover:bg-pulse-green/90 border border-pulse-green/20 text-white shadow-pulse-green/25 shadow-lg"
-            title="Press Enter to confirm"
-          >
-            Yes, Applied
+            Skip
           </Button>
         </div>
       </div>

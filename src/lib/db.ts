@@ -508,6 +508,7 @@ export const getAllUniversalJobs = async (): Promise<VaultJob[]> => {
 
 export const updateUniversalJobStatusByUrl = async (url: string, status: Job['status']): Promise<void> => {
   const db = await initDB();
+  const normalizedTargetUrl = normalizeUrl(url);
   return new Promise((resolve, reject) => {
     const transaction = db.transaction(VAULT_STORE_NAME, 'readwrite');
     const store = transaction.objectStore(VAULT_STORE_NAME);
@@ -517,7 +518,7 @@ export const updateUniversalJobStatusByUrl = async (url: string, status: Job['st
       const cursor = event.target.result;
       if (cursor) {
         const job = cursor.value as VaultJob;
-        if (job.url === url) {
+        if (normalizeUrl(job.url) === normalizedTargetUrl) {
           const updated = { ...job, status };
           cursor.update(updated);
         }
