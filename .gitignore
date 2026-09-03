@@ -43,6 +43,7 @@ supabase/.temp/
 scratch/
 __pycache__/
 *.pyc
+*.zip
 
 # Gemini/Antigravity
 .gemini/
