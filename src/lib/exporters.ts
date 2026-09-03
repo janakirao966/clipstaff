@@ -1,6 +1,11 @@
-import { parseContent } from './resumeParser';
+/**
+ * CVCraft & ClipStaff Modern ATS Resume Exporters
+ * Exports lossless OpenXML Word (.docx) documents and vector-accurate PDF (.pdf) files.
+ */
 
-// Dynamic helper for file downloads
+import { parseResumePlainText, NormalizedResumeData } from './resumeParser';
+
+// Helper for triggering browser file downloads
 function chromeDownload(blob: Blob, filename: string): Promise<any> {
   return new Promise((resolve, reject) => {
     if (typeof chrome !== 'undefined' && chrome.downloads?.download) {
@@ -17,38 +22,464 @@ function chromeDownload(blob: Blob, filename: string): Promise<any> {
       };
       reader.readAsDataURL(blob);
     } else {
-      // Fallback using dynamic file-saver import
       import('file-saver')
         .then((module) => {
           const saveAs = module.saveAs || module.default;
           saveAs(blob, filename);
           resolve(true);
         })
-        .catch(reject);
+        .catch(() => {
+          // Direct DOM fallback
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = filename;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          setTimeout(() => URL.revokeObjectURL(url), 2000);
+          resolve(true);
+        });
     }
   });
 }
 
+function sanitizeBulletText(t: string): string {
+  if (!t) return '';
+  return String(t)
+    .replace(/^[\s\u2022\u25cf\u25aa\u25b6\-\*▪·]+/, '')
+    .replace(/^\d+[\.\)]\s*/, '')
+    .replace(/^\*+|\*+$/g, '')
+    .trim();
+}
+
+function toTitleCase(s: string): string {
+  if (!s) return '';
+  return s.replace(/\b[a-zA-Z]+(?:'[a-zA-Z]+)?\b/g, (w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
+}
+
+/**
+ * Builds OpenXML Word Document (.docx) matching CVCraft's exact ATS structure.
+ */
+export async function generateDocxBlob(
+  data: NormalizedResumeData,
+  fontFamily: string = 'serif'
+): Promise<Blob> {
+  const docxLib: any = await import('docx');
+  const {
+    Document,
+    Packer,
+    Paragraph,
+    TextRun,
+    ExternalHyperlink,
+    AlignmentType,
+    HeadingLevel,
+    BorderStyle,
+    TabStopType
+  } = docxLib;
+
+  const selectedFont = fontFamily === 'sans' ? 'Calibri' : (fontFamily === 'arial' ? 'Arial' : 'Times New Roman');
+  const docChildren: any[] = [];
+
+  // Section Heading Builder using native HeadingLevel.HEADING_1 with bottom border
+  const sectionHead = (text: string) =>
+    new Paragraph({
+      heading: HeadingLevel.HEADING_1,
+      spacing: { before: 180, after: 50 },
+      keepNext: true,
+      keepLines: true,
+      border: {
+        bottom: {
+          style: BorderStyle.SINGLE,
+          size: 6, // 0.75 pt
+          color: '000000',
+          space: 2
+        }
+      },
+      children: [
+        new TextRun({
+          text: text.toUpperCase(),
+          bold: true,
+          size: 21, // 10.5 pt
+          font: selectedFont,
+          color: '000000'
+        })
+      ]
+    });
+
+  // 2-Column Pure Paragraph Helper using Right Tab Stop (position 10800)
+  const createTwoColumnRow = (leftText: string, rightText: string, isBold: boolean = true) => {
+    const tabType = TabStopType && TabStopType.RIGHT ? TabStopType.RIGHT : 'right';
+    return new Paragraph({
+      spacing: { before: 60, after: 20 },
+      keepNext: true,
+      keepLines: true,
+      tabStops: [
+        {
+          type: tabType,
+          position: 10800 // Exact right margin (12240 - 720 - 720)
+        }
+      ],
+      children: [
+        new TextRun({
+          text: leftText,
+          bold: isBold,
+          font: selectedFont,
+          size: 20, // 10 pt
+          color: '000000'
+        }),
+        new TextRun({
+          text: '\t' + (rightText || ''),
+          bold: isBold,
+          font: selectedFont,
+          size: 20,
+          color: '000000'
+        })
+      ]
+    });
+  };
+
+  // Bullet Point Builder using clean Word hanging indent
+  const bullet = (text: string) => {
+    const cleanText = sanitizeBulletText(text);
+    return new Paragraph({
+      indent: { left: 360, hanging: 240 }, // Clean Word list hanging indent
+      spacing: { before: 20, after: 25, line: 276 },
+      keepLines: true,
+      children: [
+        new TextRun({ text: '•\t', font: selectedFont, size: 20, color: '000000' }),
+        new TextRun({ text: cleanText, font: selectedFont, size: 20, color: '000000' })
+      ]
+    });
+  };
+
+  // 1. Header: Candidate Name
+  docChildren.push(
+    new Paragraph({
+      alignment: AlignmentType.CENTER,
+      spacing: { before: 0, after: 40 },
+      keepNext: true,
+      keepLines: true,
+      children: [
+        new TextRun({
+          text: toTitleCase(data.name || 'Alexander Morgan'),
+          bold: true,
+          font: selectedFont,
+          size: 28, // 14 pt
+          color: '000000'
+        })
+      ]
+    })
+  );
+
+  // Candidate Subtitle
+  if (data.subtitle) {
+    docChildren.push(
+      new Paragraph({
+        alignment: AlignmentType.CENTER,
+        spacing: { before: 0, after: 50 },
+        keepNext: true,
+        keepLines: true,
+        children: [
+          new TextRun({
+            text: data.subtitle.replace(/\s*\/\s*/g, ' & '),
+            bold: true,
+            font: selectedFont,
+            size: 21, // 10.5 pt
+            color: '000000'
+          })
+        ]
+      })
+    );
+  }
+
+  // Contact Information Bar
+  const contactChildren: any[] = [];
+  const parts: string[] = [];
+  if (data.location) parts.push(data.location);
+  if (data.phone) parts.push(data.phone);
+
+  if (parts.length > 0) {
+    contactChildren.push(
+      new TextRun({ text: parts.join(' | '), font: selectedFont, size: 19, color: '000000' })
+    );
+  }
+
+  if (data.email) {
+    if (contactChildren.length > 0) {
+      contactChildren.push(new TextRun({ text: ' | ', font: selectedFont, size: 19, color: '000000' }));
+    }
+    contactChildren.push(
+      new ExternalHyperlink({
+        children: [
+          new TextRun({ text: data.email, font: selectedFont, size: 19, color: '0000cc', underline: true })
+        ],
+        link: `mailto:${data.email}`
+      })
+    );
+  }
+
+  if (data.linkedin) {
+    if (contactChildren.length > 0) {
+      contactChildren.push(new TextRun({ text: ' | ', font: selectedFont, size: 19, color: '000000' }));
+    }
+    const cleanLink = data.linkedin.replace(/^https?:\/\//i, '');
+    contactChildren.push(
+      new ExternalHyperlink({
+        children: [
+          new TextRun({ text: cleanLink, font: selectedFont, size: 19, color: '0000cc', underline: true })
+        ],
+        link: `https://${cleanLink}`
+      })
+    );
+  }
+
+  docChildren.push(
+    new Paragraph({
+      alignment: AlignmentType.CENTER,
+      spacing: { before: 0, after: 100 },
+      keepNext: true,
+      keepLines: true,
+      children: contactChildren
+    })
+  );
+
+  // 2. Professional Summary
+  if (data.summary) {
+    docChildren.push(sectionHead('Professional Summary'));
+    docChildren.push(
+      new Paragraph({
+        alignment: AlignmentType.JUSTIFIED,
+        spacing: { before: 30, after: 60, line: 276 },
+        keepLines: true,
+        children: [
+          new TextRun({
+            text: data.summary,
+            font: selectedFont,
+            size: 20, // 10 pt
+            color: '000000'
+          })
+        ]
+      })
+    );
+  }
+
+  // 3. Technical Skills
+  if (data.skills && data.skills.length > 0) {
+    docChildren.push(sectionHead('Technical Skills'));
+    data.skills.forEach((s, idx) => {
+      docChildren.push(
+        new Paragraph({
+          spacing: { before: 20, after: 20, line: 276 },
+          keepNext: idx === 0,
+          keepLines: true,
+          children: [
+            new TextRun({
+              text: `${s.category}: `,
+              bold: true,
+              font: selectedFont,
+              size: 20,
+              color: '000000'
+            }),
+            new TextRun({
+              text: s.list,
+              font: selectedFont,
+              size: 20,
+              color: '000000'
+            })
+          ]
+        })
+      );
+    });
+  }
+
+  // 4. Professional Experience
+  if (data.experience && data.experience.length > 0) {
+    docChildren.push(sectionHead('Professional Experience'));
+
+    data.experience.forEach((exp) => {
+      const cleanComp = (exp.company || '').trim();
+      const cleanLoc = (exp.location || '').trim();
+      const compLoc = cleanLoc && !cleanComp.includes(cleanLoc) ? `${cleanComp} — ${cleanLoc}` : cleanComp;
+
+      docChildren.push(createTwoColumnRow(compLoc, exp.dates || '', true));
+
+      if (exp.role) {
+        docChildren.push(
+          new Paragraph({
+            spacing: { before: 0, after: 20 },
+            keepNext: true,
+            keepLines: true,
+            children: [
+              new TextRun({
+                text: exp.role,
+                italics: true,
+                font: selectedFont,
+                size: 20,
+                color: '000000'
+              })
+            ]
+          })
+        );
+      }
+
+      (exp.bullets || []).forEach((b) => {
+        if (b && b.trim()) {
+          docChildren.push(bullet(b));
+        }
+      });
+    });
+  }
+
+  // 5. Technical Projects
+  if (data.projects && data.projects.length > 0) {
+    docChildren.push(sectionHead('Technical Projects'));
+
+    data.projects.forEach((proj) => {
+      const pTitle = (proj.name || proj.title || 'Technical Project').trim();
+      const pTechDates = (proj.tech || proj.tech_stack || '').trim();
+
+      docChildren.push(createTwoColumnRow(pTitle, pTechDates, true));
+
+      // Project links or subline
+      const linkTxt = (proj.link || proj.url || '').trim();
+      if (linkTxt) {
+        const cleanLink = linkTxt.replace(/^https?:\/\//i, '');
+        docChildren.push(
+          new Paragraph({
+            spacing: { before: 0, after: 20 },
+            keepNext: true,
+            keepLines: true,
+            children: [
+              new ExternalHyperlink({
+                children: [
+                  new TextRun({
+                    text: cleanLink,
+                    font: selectedFont,
+                    size: 19,
+                    color: '0284c7',
+                    underline: true
+                  })
+                ],
+                link: linkTxt.startsWith('http') ? linkTxt : `https://${cleanLink}`
+              })
+            ]
+          })
+        );
+      }
+
+      (proj.bullets || []).forEach((b) => {
+        if (b && b.trim()) {
+          docChildren.push(bullet(b));
+        }
+      });
+    });
+  }
+
+  // 6. Education
+  if (data.education && data.education.length > 0) {
+    docChildren.push(sectionHead('Education'));
+
+    data.education.forEach((edu) => {
+      docChildren.push(createTwoColumnRow(edu.degree, edu.dates || '', true));
+
+      const cleanSchool = (edu.school || '').trim();
+      const cleanLoc = (edu.location || '').trim();
+      const schoolLoc = cleanLoc && !cleanSchool.includes(cleanLoc) ? `${cleanSchool} — ${cleanLoc}` : cleanSchool;
+
+      if (schoolLoc) {
+        docChildren.push(
+          new Paragraph({
+            spacing: { before: 0, after: 30 },
+            keepNext: true,
+            keepLines: true,
+            children: [
+              new TextRun({
+                text: schoolLoc,
+                italics: true,
+                font: selectedFont,
+                size: 20,
+                color: '000000'
+              })
+            ]
+          })
+        );
+      }
+    });
+  }
+
+  // 7. Certifications
+  if (data.certs && data.certs.length > 0) {
+    docChildren.push(sectionHead('Certifications'));
+    data.certs.forEach((cert) => {
+      if (cert && cert.trim()) {
+        docChildren.push(bullet(cert));
+      }
+    });
+  }
+
+  // Document Container with US Letter dimensions (8.5 x 11 in) and 0.5 in margins (720 dxa)
+  const doc = new Document({
+    sections: [
+      {
+        properties: {
+          page: {
+            size: {
+              width: 12240, // 8.5 inches in dxa
+              height: 15840 // 11.0 inches in dxa
+            },
+            margin: {
+              top: 720, // 0.5 in
+              right: 720,
+              bottom: 720,
+              left: 720
+            }
+          }
+        },
+        children: docChildren
+      }
+    ]
+  });
+
+  return await Packer.toBlob(doc);
+}
+
+/**
+ * Main export trigger for Word (.docx).
+ */
+export async function exportResumeToDocx(
+  resumeText: string,
+  fontFamily: string = 'serif',
+  P: any = null,
+  filenamePrefix: string = 'My_Resume'
+): Promise<void> {
+  const normalizedData = parseResumePlainText(resumeText, P);
+  const blob = await generateDocxBlob(normalizedData, fontFamily);
+  const fileName = (filenamePrefix || 'My_Resume').replace(/[^a-zA-Z0-9_-]/g, '_') + '.docx';
+  await chromeDownload(blob, fileName);
+}
+
+/**
+ * Modern Vector PDF Exporter matching exact layout and spacing.
+ */
 export async function exportResumeToPdf(
   resumeText: string,
-  fontFamily: string,
-  P: any,
-  filenamePrefix: string
+  fontFamily: string = 'serif',
+  P: any = null,
+  filenamePrefix: string = 'My_Resume'
 ): Promise<void> {
-  // Dynamic import of jspdf
   const { default: jsPDF } = await import('jspdf');
-
-  const { summary, skills, experience } = parseContent(resumeText);
+  const data = parseResumePlainText(resumeText, P);
   const fontName = fontFamily === 'serif' ? 'times' : 'helvetica';
 
-  // Letter: 8.5x11in = 612x792pt. Use 32pt padding (0.5in inner margin)
+  // Letter: 8.5x11in = 612x792pt. Use 36pt padding (0.5in inner margin)
   const pdf = new jsPDF({ unit: 'pt', format: 'letter', orientation: 'portrait' });
   const pageW = 612;
   const pageH = 792;
-  const margin = 32;
+  const margin = 36;
   const contentW = pageW - margin * 2;
   let y = margin;
-  const lineH = 11 * 1.15;
+  const lineH = 12;
 
   const checkPage = (needed: number) => {
     if (y + needed > pageH - margin) {
@@ -81,529 +512,245 @@ export async function exportResumeToPdf(
     }
   };
 
-  // Name
-  y += 4;
-  drawText(P.name, margin, 14, 'bold', contentW, 'center');
-  y += 4;
-
-  // Subtitle
-  if (P.subtitle) {
-    drawText(P.subtitle, margin, 11, 'bold', contentW, 'center');
-    y += 6;
-  }
-
-  // Contact
-  const cParts: string[] = [];
-  if (P.location) cParts.push(P.location);
-  if (P.phone) cParts.push(P.phone);
-  if (P.email) cParts.push(P.email);
-  if (P.linkedin) {
-    const display = P.linkedin.replace(/^https?:\/\//i, '').replace(/^www\./i, '').replace(/\/+$/, '');
-    cParts.push(display);
-  }
-  if (cParts.length > 0) {
-    drawText(cParts.join('  |  '), margin, 11, 'normal', contentW, 'center');
-  }
-  y += 12;
-
-  // Section Header
   const sectionHeader = (title: string) => {
     y += 10;
-    checkPage(24);
+    checkPage(30);
     pdf.setFont(fontName, 'bold');
-    pdf.setFontSize(11);
+    pdf.setFontSize(10.5);
     pdf.setTextColor(0, 0, 0);
     pdf.text(title.toUpperCase(), margin, y);
-    y += 3;
+    
+    // Position underline comfortably below the text baseline with generous breathing room
+    const lineY = y + 4.5;
     pdf.setDrawColor(0, 0, 0);
-    pdf.setLineWidth(0.5);
-    pdf.line(margin, y, pageW - margin, y);
-    y += lineH;
+    pdf.setLineWidth(0.75);
+    pdf.line(margin, lineY, pageW - margin, lineY);
+    
+    // Advance Y past the line to give clear separation before content
+    y = lineY + 10;
   };
 
-  // Summary
-  if (summary) {
+  // Set PDF Document Metadata
+  pdf.setProperties({
+    title: `${data.name || 'Candidate'} - Resume`,
+    subject: `Professional ATS Resume - ${data.subtitle || 'Candidate'}`,
+    author: data.name || 'Candidate',
+    keywords: 'Resume, ATS, CVCraft, OpenXML, Professional, Career',
+    creator: 'ClipStaff Resume Studio (CVCraft Engine)'
+  });
+
+  // 1. Candidate Name
+  y += 4;
+  drawText(toTitleCase(data.name || 'Alexander Morgan'), margin, 15, 'bold', contentW, 'center');
+  y += 2;
+
+  // Subtitle
+  if (data.subtitle) {
+    drawText(data.subtitle.replace(/\s*\/\s*/g, ' & '), margin, 10.5, 'bold', contentW, 'center');
+    y += 4;
+  }
+
+  // Contact line with interactive hyperlinks
+  const contactItems: { text: string; isLink?: boolean; url?: string }[] = [];
+  if (data.location) contactItems.push({ text: data.location });
+  if (data.phone) contactItems.push({ text: data.phone });
+  if (data.email) {
+    contactItems.push({ text: data.email, isLink: true, url: `mailto:${data.email}` });
+  }
+  if (data.linkedin) {
+    const rawUrl = data.linkedin.trim();
+    const href = rawUrl.startsWith('http') ? rawUrl : `https://${rawUrl}`;
+    const display = rawUrl.replace(/^https?:\/\//i, '').replace(/^www\./i, '').replace(/\/+$/, '');
+    contactItems.push({ text: display, isLink: true, url: href });
+  }
+
+  if (contactItems.length > 0) {
+    pdf.setFont(fontName, 'normal');
+    pdf.setFontSize(9.5);
+    const sep = '  |  ';
+    const sepWidth = pdf.getTextWidth(sep);
+
+    let totalWidth = 0;
+    contactItems.forEach((item, idx) => {
+      totalWidth += pdf.getTextWidth(item.text);
+      if (idx < contactItems.length - 1) totalWidth += sepWidth;
+    });
+
+    let startX = margin + (contentW - totalWidth) / 2;
+    contactItems.forEach((item, idx) => {
+      const itemW = pdf.getTextWidth(item.text);
+      if (item.isLink && item.url) {
+        pdf.setTextColor(0, 0, 238);
+        pdf.textWithLink(item.text, startX, y, { url: item.url });
+        pdf.setTextColor(0, 0, 0);
+      } else {
+        pdf.setTextColor(0, 0, 0);
+        pdf.text(item.text, startX, y);
+      }
+      startX += itemW;
+      if (idx < contactItems.length - 1) {
+        pdf.setTextColor(0, 0, 0);
+        pdf.text(sep, startX, y);
+        startX += sepWidth;
+      }
+    });
+    y += 10;
+  }
+
+  // 2. Summary
+  if (data.summary) {
     sectionHeader('Professional Summary');
-    drawText(summary, margin, 11, 'normal', contentW);
+    drawText(data.summary, margin, 10, 'normal', contentW);
   }
 
-  // Skills
-  if (skills) {
+  // 3. Technical Skills
+  if (data.skills && data.skills.length > 0) {
     sectionHeader('Technical Skills');
-    skills.split('\n').filter((l: string) => l.trim()).forEach((line: string) => {
-      const cleanLine = line.trim().replace(/^[-\u2022*]\s*/, '');
-      const idx = cleanLine.indexOf(':');
-      if (idx > -1) {
-        checkPage(lineH);
-        pdf.setFont(fontName, 'bold');
-        pdf.setFontSize(11);
-        const label = cleanLine.substring(0, idx + 1);
-        pdf.text(label, margin, y);
-        const labelW = pdf.getTextWidth(label);
-        pdf.setFont(fontName, 'normal');
-        const rest = cleanLine.substring(idx + 1);
-        const restLines = pdf.splitTextToSize(rest, contentW - labelW);
-        pdf.text(restLines[0] || '', margin + labelW, y);
-        y += lineH;
-        for (let i = 1; i < restLines.length; i++) {
-          checkPage(lineH);
-          pdf.text(restLines[i], margin, y);
-          y += lineH;
-        }
-      } else {
-        drawText(cleanLine, margin, 11, 'normal', contentW);
-      }
-      y += 2;
-    });
-  }
-
-  // Experience
-  if (experience) {
-    sectionHeader('Professional Experience');
-    experience.split('\n').filter((l: string) => l.trim()).forEach((line: string) => {
-      const t = line.trim();
-      if (/^[-\u2022*]/.test(t)) {
-        const bulletText = t.replace(/^[-\u2022*]\s*/, '');
-        y += 2;
-        checkPage(lineH);
-        pdf.setFont(fontName, 'normal');
-        pdf.setFontSize(11);
-        pdf.text('\u2022', margin, y);
-        const bulletLines = pdf.splitTextToSize(bulletText, contentW - 8);
-        bulletLines.forEach((bl: string, i: number) => {
-          if (i > 0) {
-            y += lineH;
-            checkPage(lineH);
-          }
-          pdf.text(bl, margin + 8, y);
-        });
-        y += lineH;
-        y += 2;
-      } else if (t.includes('|')) {
-        const parts = t.split('|').map((p) => p.trim());
-        if (parts.length >= 4) {
-          y += 8;
-          checkPage(lineH * 2 + 2);
-          pdf.setFont(fontName, 'bold');
-          pdf.setFontSize(11);
-          pdf.text(parts[0], margin, y);
-          pdf.text(parts[3], pageW - margin, y, { align: 'right' });
-          y += lineH;
-          pdf.setFont(fontName, 'normal');
-          pdf.text(parts[2], margin, y);
-          pdf.text(parts[1], pageW - margin, y, { align: 'right' });
-          y += lineH;
-          y += 2;
-        } else if (parts.length === 3) {
-          y += 8;
-          checkPage(lineH * 2 + 2);
-          pdf.setFont(fontName, 'bold');
-          pdf.setFontSize(11);
-          pdf.text(parts[0], margin, y);
-          pdf.text(parts[2], pageW - margin, y, { align: 'right' });
-          y += lineH;
-          pdf.setFont(fontName, 'normal');
-          pdf.text(parts[1], margin, y);
-          y += lineH;
-          y += 2;
-        } else {
-          y += 8;
-          checkPage(lineH);
-          pdf.setFont(fontName, 'bold');
-          pdf.setFontSize(11);
-          pdf.text(t, margin, y);
-          y += lineH;
-        }
-      } else {
-        drawText(t, margin, 11, 'normal', contentW);
-      }
-    });
-  }
-
-  // Education
-  if (P.education.length > 0) {
-    sectionHeader('Education');
-    P.education.forEach((e: any) => {
-      y += 6;
-      checkPage(lineH * 2 + 2);
-      pdf.setFont(fontName, 'bold');
-      pdf.setFontSize(11);
-      pdf.text(e.degree, margin, y);
-      pdf.text(e.dates, pageW - margin, y, { align: 'right' });
-      y += lineH;
-      pdf.setFont(fontName, 'normal');
-      pdf.text(`${e.school}${e.location ? ', ' + e.location : ''}`, margin, y);
-      y += lineH;
-      y += 2;
-    });
-  }
-
-  // Certifications
-  const activeCerts = P.certifications.map((c: string) => c.trim()).filter(Boolean);
-  if (activeCerts.length > 0) {
-    sectionHeader('Certifications');
-    activeCerts.forEach((c: string) => {
-      const cleanC = c.replace(/^[-\u2022*\u00b7]\s*/, '').replace(/^\d+\.\s*/, '');
-      y += 2;
+    data.skills.forEach((s) => {
       checkPage(lineH);
+      pdf.setFont(fontName, 'bold');
+      pdf.setFontSize(10);
+      const label = `${s.category}: `;
+      pdf.text(label, margin, y);
+      const labelW = pdf.getTextWidth(label);
       pdf.setFont(fontName, 'normal');
-      pdf.setFontSize(11);
-      pdf.text('\u2022', margin, y);
-      pdf.text(cleanC, margin + 8, y);
+      const restLines = pdf.splitTextToSize(s.list, contentW - labelW);
+      pdf.text(restLines[0] || '', margin + labelW, y);
       y += lineH;
-      y += 2;
+      for (let i = 1; i < restLines.length; i++) {
+        checkPage(lineH);
+        pdf.text(restLines[i], margin, y);
+        y += lineH;
+      }
     });
   }
 
-  const fileName = filenamePrefix + '_Resume.pdf';
+  // 4. Professional Experience
+  if (data.experience && data.experience.length > 0) {
+    sectionHeader('Professional Experience');
+    data.experience.forEach((exp) => {
+      const cleanComp = (exp.company || '').trim();
+      const cleanLoc = (exp.location || '').trim();
+      const compLoc = cleanLoc && !cleanComp.includes(cleanLoc) ? `${cleanComp} — ${cleanLoc}` : cleanComp;
+
+      y += 3;
+      checkPage(lineH * 2);
+      pdf.setFont(fontName, 'bold');
+      pdf.setFontSize(10);
+      pdf.text(compLoc, margin, y);
+      pdf.text(exp.dates || '', pageW - margin, y, { align: 'right' });
+      y += lineH;
+
+      if (exp.role) {
+        pdf.setFont(fontName, 'italic');
+        pdf.text(exp.role, margin, y);
+        y += lineH;
+      }
+
+      (exp.bullets || []).forEach((b) => {
+        const cleanB = sanitizeBulletText(b);
+        if (cleanB) {
+          checkPage(lineH);
+          pdf.setFont(fontName, 'normal');
+          pdf.setFontSize(10);
+          pdf.text('•', margin + 4, y);
+          const bLines = pdf.splitTextToSize(cleanB, contentW - 16);
+          pdf.text(bLines[0] || '', margin + 14, y);
+          y += lineH;
+          for (let i = 1; i < bLines.length; i++) {
+            checkPage(lineH);
+            pdf.text(bLines[i], margin + 14, y);
+            y += lineH;
+          }
+        }
+      });
+    });
+  }
+
+  // 5. Technical Projects
+  if (data.projects && data.projects.length > 0) {
+    sectionHeader('Technical Projects');
+    data.projects.forEach((proj) => {
+      const pTitle = (proj.name || proj.title || 'Technical Project').trim();
+      const pTech = (proj.tech || proj.tech_stack || '').trim();
+
+      y += 3;
+      checkPage(lineH * 2);
+      pdf.setFont(fontName, 'bold');
+      pdf.setFontSize(10);
+      pdf.text(pTitle, margin, y);
+      pdf.text(pTech, pageW - margin, y, { align: 'right' });
+      y += lineH;
+
+      if (proj.link) {
+        pdf.setFont(fontName, 'italic');
+        pdf.setTextColor(2, 132, 199);
+        pdf.text(proj.link, margin, y);
+        pdf.setTextColor(0, 0, 0);
+        y += lineH;
+      }
+
+      (proj.bullets || []).forEach((b) => {
+        const cleanB = sanitizeBulletText(b);
+        if (cleanB) {
+          checkPage(lineH);
+          pdf.setFont(fontName, 'normal');
+          pdf.setFontSize(10);
+          pdf.text('•', margin + 4, y);
+          const bLines = pdf.splitTextToSize(cleanB, contentW - 16);
+          pdf.text(bLines[0] || '', margin + 14, y);
+          y += lineH;
+          for (let i = 1; i < bLines.length; i++) {
+            checkPage(lineH);
+            pdf.text(bLines[i], margin + 14, y);
+            y += lineH;
+          }
+        }
+      });
+    });
+  }
+
+  // 6. Education
+  if (data.education && data.education.length > 0) {
+    sectionHeader('Education');
+    data.education.forEach((edu) => {
+      y += 3;
+      checkPage(lineH * 2);
+      pdf.setFont(fontName, 'bold');
+      pdf.setFontSize(10);
+      pdf.text(edu.degree, margin, y);
+      pdf.text(edu.dates || '', pageW - margin, y, { align: 'right' });
+      y += lineH;
+
+      const cleanSchool = (edu.school || '').trim();
+      const cleanLoc = (edu.location || '').trim();
+      const schoolLoc = cleanLoc && !cleanSchool.includes(cleanLoc) ? `${cleanSchool} — ${cleanLoc}` : cleanSchool;
+
+      if (schoolLoc) {
+        pdf.setFont(fontName, 'italic');
+        pdf.text(schoolLoc, margin, y);
+        y += lineH;
+      }
+    });
+  }
+
+  // 7. Certifications
+  if (data.certs && data.certs.length > 0) {
+    sectionHeader('Certifications');
+    data.certs.forEach((cert) => {
+      const cleanC = sanitizeBulletText(cert);
+      if (cleanC) {
+        checkPage(lineH);
+        pdf.setFont(fontName, 'normal');
+        pdf.setFontSize(10);
+        pdf.text('•', margin + 4, y);
+        pdf.text(cleanC, margin + 14, y);
+        y += lineH;
+      }
+    });
+  }
+
+  const fileName = (filenamePrefix || 'My_Resume').replace(/[^a-zA-Z0-9_-]/g, '_') + '.pdf';
   const pdfBlob = pdf.output('blob');
   await chromeDownload(pdfBlob, fileName);
-}
-
-export async function exportResumeToDocx(
-  resumeText: string,
-  fontFamily: string,
-  P: any,
-  filenamePrefix: string
-): Promise<void> {
-  // Dynamic import of docx
-  const docx = await import('docx');
-  const {
-    Document,
-    Packer,
-    Paragraph,
-    TextRun,
-    ExternalHyperlink,
-    AlignmentType,
-    BorderStyle,
-    TabStopType,
-    LevelFormat,
-  } = docx;
-
-  const { summary, skills, experience } = parseContent(resumeText);
-  const selectedFont = fontFamily === 'serif' ? 'Times New Roman' : 'Arial';
-
-  function sectionHead(text: string) {
-    return new Paragraph({
-      spacing: { before: 240, after: 80 },
-      border: { bottom: { style: BorderStyle.SINGLE, size: 4, color: '000000', space: 2 } },
-      children: [
-        new TextRun({
-          text: text.toUpperCase(),
-          bold: true,
-          size: 22,
-          font: selectedFont,
-          color: '000000',
-        }),
-      ],
-    });
-  }
-
-  function bullet(text: string) {
-    return new Paragraph({
-      spacing: { before: 30, after: 30 },
-      indent: { left: 240, hanging: 240 },
-      tabStops: [{ type: TabStopType.LEFT, position: 240 }],
-      children: [
-        new TextRun({ text: '•\t', font: selectedFont, size: 22, color: '000000' }),
-        new TextRun({ text, font: selectedFont, size: 22, color: '000000' }),
-      ],
-    });
-  }
-
-  function skillsDocx(rawSkills: string) {
-    if (!rawSkills) return [];
-    return rawSkills
-      .split('\n')
-      .filter((l) => l.trim())
-      .map((line) => {
-        const cleanLine = line.trim().replace(/^[-•*–—\u2013\u2014\u2022]\s*/, '');
-        const idx = cleanLine.indexOf(':');
-        if (idx > -1) {
-          return new Paragraph({
-            spacing: { before: 30, after: 30 },
-            children: [
-              new TextRun({
-                text: cleanLine.substring(0, idx + 1),
-                bold: true,
-                font: selectedFont,
-                size: 22,
-                color: '000000',
-              }),
-              new TextRun({
-                text: cleanLine.substring(idx + 1),
-                font: selectedFont,
-                size: 22,
-                color: '000000',
-              }),
-            ],
-          });
-        }
-        return new Paragraph({
-          spacing: { before: 30, after: 30 },
-          children: [new TextRun({ text: cleanLine, font: selectedFont, size: 22, color: '000000' })],
-        });
-      });
-  }
-
-  function expDocx(rawExp: string) {
-    if (!rawExp) return [];
-    return rawExp
-      .split('\n')
-      .filter((l) => l.trim())
-      .map((line) => {
-        const t = line.trim();
-        if (/^[-•*–—\u2013\u2014\u2022]/.test(t)) {
-          return bullet(t.replace(/^[-•*–—\u2013\u2014\u2022]\s*/, ''));
-        }
-        if (t.includes('|')) {
-          const parts = t.split('|').map((p) => p.trim());
-          const rows = [];
-          if (parts.length >= 4) {
-            rows.push(
-              new Paragraph({
-                spacing: { before: 180, after: 40 },
-                tabStops: [{ type: TabStopType.RIGHT, position: 10800 }],
-                children: [
-                  new TextRun({
-                    text: parts[0],
-                    bold: true,
-                    font: selectedFont,
-                    size: 22,
-                    color: '000000',
-                  }),
-                  new TextRun({ text: '\t' }),
-                  new TextRun({
-                    text: parts[3],
-                    bold: true,
-                    font: selectedFont,
-                    size: 22,
-                    color: '000000',
-                  }),
-                ],
-              })
-            );
-            rows.push(
-              new Paragraph({
-                spacing: { before: 0, after: 60 },
-                tabStops: [{ type: TabStopType.RIGHT, position: 10800 }],
-                children: [
-                  new TextRun({ text: parts[2], font: selectedFont, size: 22, color: '000000' }),
-                  new TextRun({ text: '\t' }),
-                  new TextRun({ text: parts[1], font: selectedFont, size: 22, color: '000000' }),
-                ],
-              })
-            );
-          } else if (parts.length === 3) {
-            rows.push(
-              new Paragraph({
-                spacing: { before: 180, after: 40 },
-                tabStops: [{ type: TabStopType.RIGHT, position: 10800 }],
-                children: [
-                  new TextRun({
-                    text: parts[0],
-                    bold: true,
-                    font: selectedFont,
-                    size: 22,
-                    color: '000000',
-                  }),
-                  new TextRun({ text: '\t' }),
-                  new TextRun({
-                    text: parts[2],
-                    bold: true,
-                    font: selectedFont,
-                    size: 22,
-                    color: '000000',
-                  }),
-                ],
-              })
-            );
-            rows.push(
-              new Paragraph({
-                spacing: { before: 0, after: 60 },
-                children: [new TextRun({ text: parts[1], font: selectedFont, size: 22, color: '000000' })],
-              })
-            );
-          }
-          return rows;
-        }
-        return new Paragraph({
-          spacing: { before: 60, after: 60 },
-          children: [new TextRun({ text: t, font: selectedFont, size: 22, color: '000000' })],
-        });
-      })
-      .flat();
-  }
-
-  const summaryParagraphs = [];
-  if (summary) {
-    summaryParagraphs.push(sectionHead('Professional Summary'));
-    summaryParagraphs.push(
-      new Paragraph({
-        alignment: AlignmentType.JUSTIFIED,
-        spacing: { before: 0, after: 80 },
-        children: [new TextRun({ text: summary, font: selectedFont, size: 22, color: '000000' })],
-      })
-    );
-  }
-
-  const eduParagraphs = [sectionHead('Education')];
-  P.education.forEach((e: any) => {
-    eduParagraphs.push(
-      new Paragraph({
-        spacing: { before: 180, after: 40 },
-        tabStops: [{ type: TabStopType.RIGHT, position: 10800 }],
-        children: [
-          new TextRun({ text: e.degree, bold: true, font: selectedFont, size: 22, color: '000000' }),
-          new TextRun({ text: '\t' }),
-          new TextRun({ text: e.dates, bold: true, font: selectedFont, size: 22, color: '000000' }),
-        ],
-      })
-    );
-    eduParagraphs.push(
-      new Paragraph({
-        spacing: { before: 0, after: 60 },
-        children: [
-          new TextRun({
-            text: `${e.school}${e.location ? ', ' + e.location : ''}`,
-            font: selectedFont,
-            size: 22,
-            color: '000000',
-          }),
-        ],
-      })
-    );
-  });
-
-  const certParagraphs = [];
-  const activeCerts = P.certifications.map((c: string) => c.trim()).filter(Boolean);
-  if (activeCerts.length) {
-    certParagraphs.push(sectionHead('Certifications'));
-    activeCerts.forEach((c: string) => {
-      certParagraphs.push(bullet(c));
-    });
-  }
-
-  const contactChildren: any[] = [];
-  const textSeparator = () =>
-    new TextRun({ text: '  |  ', font: selectedFont, size: 22, color: '000000' });
-
-  const contactParts = [];
-  if (P.location) contactParts.push(P.location);
-  if (P.phone) contactParts.push(P.phone);
-  if (contactParts.length > 0) {
-    contactChildren.push(
-      new TextRun({ text: contactParts.join('  |  '), font: selectedFont, size: 22, color: '000000' })
-    );
-  }
-
-  if (P.email) {
-    if (contactChildren.length > 0) contactChildren.push(textSeparator());
-    contactChildren.push(
-      new ExternalHyperlink({
-        children: [
-          new TextRun({ text: P.email, font: selectedFont, size: 22, color: '0000ff', underline: {} }),
-        ],
-        link: `mailto:${P.email}`,
-      })
-    );
-  }
-
-  if (P.linkedin) {
-    if (contactChildren.length > 0) contactChildren.push(textSeparator());
-    const rawLinkedin = P.linkedin.trim();
-    const hrefLinkedin = rawLinkedin.startsWith('http') ? rawLinkedin : `https://${rawLinkedin}`;
-    const displayLinkedin = rawLinkedin.replace(/^https?:\/\//i, '').replace(/^www\./i, '').replace(/\/+$/, '');
-
-    contactChildren.push(
-      new ExternalHyperlink({
-        children: [
-          new TextRun({
-            text: displayLinkedin,
-            font: selectedFont,
-            size: 22,
-            color: '0000ff',
-            underline: {},
-          }),
-        ],
-        link: hrefLinkedin,
-      })
-    );
-  }
-
-  const contactParagraph = new Paragraph({
-    alignment: AlignmentType.CENTER,
-    spacing: { before: 0, after: 200 },
-    children: contactChildren,
-  });
-
-  const doc = new Document({
-    numbering: {
-      config: [
-        {
-          reference: 'bullets',
-          levels: [
-            {
-              level: 0,
-              format: LevelFormat.BULLET,
-              text: '•',
-              alignment: AlignmentType.LEFT,
-              style: { paragraph: { indent: { left: 360, hanging: 360 } } },
-            },
-          ],
-        },
-      ],
-    },
-    styles: { default: { document: { run: { font: selectedFont, size: 22, color: '000000' } } } },
-    sections: [
-      {
-        properties: {
-          page: {
-            size: { width: 12240, height: 15840 },
-            margin: { top: 720, right: 720, bottom: 720, left: 720 },
-          },
-        },
-        children: [
-          new Paragraph({
-            alignment: AlignmentType.CENTER,
-            spacing: { before: 0, after: 80 },
-            children: [
-              new TextRun({
-                text: P.name || '',
-                bold: true,
-                font: selectedFont,
-                size: 28,
-                color: '000000',
-              }),
-            ],
-          }),
-          new Paragraph({
-            alignment: AlignmentType.CENTER,
-            spacing: { before: 0, after: 120 },
-            children: [
-              new TextRun({
-                text: P.subtitle || '',
-                bold: true,
-                font: selectedFont,
-                size: 22,
-                color: '000000',
-              }),
-            ],
-          }),
-          contactParagraph,
-          ...summaryParagraphs,
-          sectionHead('Technical Skills'),
-          ...skillsDocx(skills),
-          sectionHead('Professional Experience'),
-          ...expDocx(experience),
-          ...eduParagraphs,
-          ...certParagraphs,
-        ],
-      },
-    ],
-  });
-
-  const blob = await Packer.toBlob(doc);
-  const fileName = filenamePrefix + '_Resume.docx';
-  await chromeDownload(blob, fileName);
 }

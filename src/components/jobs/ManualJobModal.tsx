@@ -1,10 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Button } from '../ui';
 import { Modal } from '../ui/Modal';
 import { toast } from 'sonner';
 import { useJobsDb } from '../../hooks/useJobsDb';
 import { isValidJobUrl, extractCompanyFromUrl, extractRoleFromUrl } from '../../lib/extractor';
-import { Bookmark } from 'lucide-react';
+import { checkCompanyExclusion } from '../../lib/exclusionHelper';
+import { useStore } from '../../store/useStore';
+import { Bookmark, AlertTriangle } from 'lucide-react';
 
 interface ManualJobModalProps {
   isOpen: boolean;
@@ -15,6 +17,9 @@ interface ManualJobModalProps {
 
 export const ManualJobModal = ({ isOpen, onClose, onSaved, mode }: ManualJobModalProps) => {
   const localDb = useJobsDb();
+  const activeProfile = useStore(state => state.activeProfile);
+  const candidateExclusions = useStore(state => state.candidateExclusions);
+  const globalExclusions = useStore(state => state.globalExclusions);
   
   const [jobUrlInput, setJobUrlInput] = useState('');
   const [companyInput, setCompanyInput] = useState('');
@@ -32,6 +37,17 @@ export const ManualJobModal = ({ isOpen, onClose, onSaved, mode }: ManualJobModa
       }
     }
   }, [isOpen, mode]);
+
+  const exclusionCheck = useMemo(() => {
+    if (!jobUrlInput && !companyInput) return { isExcluded: false };
+    return checkCompanyExclusion({
+      url: jobUrlInput,
+      companyName: companyInput,
+      profile: activeProfile,
+      candidateExclusions,
+      globalExclusions
+    });
+  }, [jobUrlInput, companyInput, activeProfile, candidateExclusions, globalExclusions]);
 
   const handleCaptureCurrentTab = async () => {
     if (typeof chrome === 'undefined' || !chrome.tabs) {
@@ -146,14 +162,18 @@ export const ManualJobModal = ({ isOpen, onClose, onSaved, mode }: ManualJobModa
         setRoleInput(finalRole);
         setScraping(false);
 
-        const isJobUrl = !['chrome:', 'chrome-extension:', 'about:', 'file:'].includes(new URL(tab.url!).protocol);
-        if (isJobUrl) {
-          toast.success('Captured Tab Details', {
-            description: 'Successfully scraped details from active page content.'
-          });
-        } else {
-          toast.warning('Not a Job Page', {
-            description: 'This URL does not look like a standard job application, but you can still customize and save it.'
+        const companyToCheck = scraped?.company?.trim() || parsedCompany;
+        const check = checkCompanyExclusion({
+          url: tab.url!,
+          companyName: companyToCheck,
+          profile: activeProfile,
+          candidateExclusions,
+          globalExclusions
+        });
+
+        if (check.isExcluded) {
+          toast.warning('Exclusion Warning', {
+            description: check.warningMessage || `"${check.matchedCompany}" is in your profile experience. Do not apply!`
           });
         }
       });
@@ -176,6 +196,13 @@ export const ManualJobModal = ({ isOpen, onClose, onSaved, mode }: ManualJobModa
     if (!isValidJobUrl(jobUrlInput)) {
       toast.error('Not a Job Page', {
         description: 'Saving is restricted for system, communication, search, or social feeds (Gmail, WhatsApp, Google Search, etc.).'
+      });
+      return;
+    }
+
+    if (exclusionCheck.isExcluded) {
+      toast.warning('Exclusion: Do Not Apply', {
+        description: exclusionCheck.warningMessage || `"${exclusionCheck.matchedCompany}" is listed in your profile experience history. URL cannot be saved.`
       });
       return;
     }
@@ -206,6 +233,20 @@ export const ManualJobModal = ({ isOpen, onClose, onSaved, mode }: ManualJobModa
           </div>
         ) : (
           <>
+            {exclusionCheck.isExcluded && (
+              <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl flex items-start gap-2.5 text-red-400 animate-in fade-in duration-200">
+                <AlertTriangle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+                <div className="space-y-0.5">
+                  <span className="text-[10px] font-bold uppercase tracking-wider block text-red-300">
+                    Profile Experience Exclusion
+                  </span>
+                  <p className="text-[11px] leading-relaxed text-red-400">
+                    {exclusionCheck.warningMessage}
+                  </p>
+                </div>
+              </div>
+            )}
+
             <div className="space-y-3">
               <div className="space-y-1">
                 <label className="text-[8px] font-bold uppercase tracking-wider text-ash">Job URL</label>
@@ -252,10 +293,12 @@ export const ManualJobModal = ({ isOpen, onClose, onSaved, mode }: ManualJobModa
               )}
               <Button
                 size="sm"
-                variant="primary"
+                variant={exclusionCheck.isExcluded ? 'secondary' : 'primary'}
                 onClick={handleAddManualJob}
+                disabled={exclusionCheck.isExcluded}
+                className={exclusionCheck.isExcluded ? 'opacity-50 cursor-not-allowed text-red-400' : ''}
               >
-                Save Application
+                {exclusionCheck.isExcluded ? 'Exclusion Blocked' : 'Save Application'}
               </Button>
             </div>
           </>

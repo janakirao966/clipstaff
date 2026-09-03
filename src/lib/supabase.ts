@@ -1,45 +1,66 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://placeholder.supabase.co';
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'placeholder-anon-key';
 
-if (!supabaseUrl || !supabaseAnonKey) {
-  console.warn('Supabase credentials missing. Please check your .env file.');
+export const isSupabaseConfigured = Boolean(
+  import.meta.env.VITE_SUPABASE_URL && 
+  import.meta.env.VITE_SUPABASE_ANON_KEY &&
+  !import.meta.env.VITE_SUPABASE_URL.includes('your-project')
+);
+
+if (!isSupabaseConfigured) {
+  console.info('ClipStaff: Operating in local/offline mode (Supabase keys not configured in .env).');
 }
 
-// Custom storage adapter: chrome.storage.local for extension, localStorage for web
+// Custom storage adapter: chrome.storage.local with localStorage fallback for cross-page persistence
 const chromeStorageAdapter = {
-  getItem: (key: string) => {
-    if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
-      return new Promise<string | null>((resolve) => {
-        chrome.storage.local.get([key], (result) => {
-          resolve(result[key] || null);
+  getItem: async (key: string): Promise<string | null> => {
+    try {
+      if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+        const result = await new Promise<any>((resolve) => {
+          chrome.storage.local.get([key], (res) => resolve(res || {}));
         });
-      });
+        if (result && result[key] !== undefined && result[key] !== null) {
+          return typeof result[key] === 'string' ? result[key] : JSON.stringify(result[key]);
+        }
+      }
+    } catch (e) {
+      console.warn('ClipStaff: chrome.storage.local getItem error:', e);
     }
-    return Promise.resolve(localStorage.getItem(key));
+    try {
+      return localStorage.getItem(key);
+    } catch {
+      return null;
+    }
   },
-  setItem: (key: string, value: string) => {
-    if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
-      return new Promise<void>((resolve) => {
-        chrome.storage.local.set({ [key]: value }, () => {
-          resolve();
+  setItem: async (key: string, value: string): Promise<void> => {
+    try {
+      if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+        await new Promise<void>((resolve) => {
+          chrome.storage.local.set({ [key]: value }, () => resolve());
         });
-      });
+      }
+    } catch (e) {
+      console.warn('ClipStaff: chrome.storage.local setItem error:', e);
     }
-    localStorage.setItem(key, value);
-    return Promise.resolve();
+    try {
+      localStorage.setItem(key, value);
+    } catch {}
   },
-  removeItem: (key: string) => {
-    if (typeof chrome !== 'undefined' && chrome.storage && chrome.storage.local) {
-      return new Promise<void>((resolve) => {
-        chrome.storage.local.remove([key], () => {
-          resolve();
+  removeItem: async (key: string): Promise<void> => {
+    try {
+      if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+        await new Promise<void>((resolve) => {
+          chrome.storage.local.remove([key], () => resolve());
         });
-      });
+      }
+    } catch (e) {
+      console.warn('ClipStaff: chrome.storage.local removeItem error:', e);
     }
-    localStorage.removeItem(key);
-    return Promise.resolve();
+    try {
+      localStorage.removeItem(key);
+    } catch {}
   },
 };
 

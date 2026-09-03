@@ -72,6 +72,10 @@ export interface Job {
   retryCount?: number;
   lastRetryAt?: number;
   version?: number;
+  createdAt?: number;
+  updatedAt?: number;
+  appliedAt?: number;
+  rowIndex?: number;
 }
 
 export interface VaultJob {
@@ -82,6 +86,10 @@ export interface VaultJob {
   url: string;
   status: 'not_applied' | 'applied' | 'skipped';
   dateAdded?: string;
+  createdAt?: number;
+  updatedAt?: number;
+  appliedAt?: number;
+  rowIndex?: number;
 }
 
 export interface SheetTab {
@@ -89,3 +97,92 @@ export interface SheetTab {
   jobs: Job[];
 }
 
+export interface ProfileRulesAndPreferences {
+  candidateExclusions?: string[];
+  tailoredBullets?: string[];
+  tailoredCoverLetter?: string;
+  lastEligibilityResult?: any;
+}
+
+export interface ProfileBundleJSON {
+  version: string;
+  exportedAt: string;
+  app: 'ClipStaff';
+  type: 'clipstaff_profile_bundle';
+  profile: Profile;
+  resumeText?: string;
+  profileTriggers?: Record<string, string>;
+  snippets?: Snippet[];
+  applications?: Job[];
+  rulesAndPreferences?: ProfileRulesAndPreferences;
+}
+
+export interface SystemBackupJSON {
+  version: string;
+  exportedAt: string;
+  app: 'ClipStaff';
+  type: 'clipstaff_system_backup';
+  activeProfileId?: string;
+  profiles: Profile[];
+  profileTriggers?: Record<string, string>;
+  resumeText?: string;
+  snippets: Snippet[];
+  applications: Job[];
+  vaultJobs?: VaultJob[];
+  sheetTabs?: SheetTab[];
+  globalExclusions?: string[];
+  sectorExclusions?: string[];
+  candidateExclusions?: Record<string, string[]>;
+  spreadsheetUrl?: string;
+  googleWebAppUrl?: string;
+}
+
+export type DetectedImportFormat = 
+  | 'clipstaff_profile_bundle'
+  | 'clipstaff_system_backup'
+  | 'legacy_profile_json'
+  | 'snippets_array'
+  | 'shortcuts_map'
+  | 'jobs_array'
+  | 'unknown';
+
+export type ImportStrategy = 'merge' | 'overwrite';
+
+export interface ImportAuditReport {
+  format: DetectedImportFormat;
+  version?: string;
+  exportedAt?: string;
+  isValid: boolean;
+  error?: string;
+  warnings: string[];
+  
+  // Profile Summary
+  profileData?: Partial<Profile> | null;
+  allProfiles?: Profile[];
+  profileName?: string;
+  profileFieldCount: number;
+  
+  // Triggers & Text
+  profileTriggers?: Record<string, string>;
+  resumeText?: string;
+  
+  // Snippets/Shortcuts Summary
+  snippetsToImport: {
+    total: number;
+    newCount: number;
+    updateCount: number;
+    items: { shortcut: string; text: string; category?: string; is_pinned?: boolean }[];
+  };
+  
+  // Applications Summary
+  applicationsToImport: {
+    total: number;
+    newCount: number;
+    upgradeCount: number;
+    items: Job[];
+  };
+  
+  // Rules & Extras
+  rulesAndPreferences?: ProfileRulesAndPreferences;
+  systemBackupData?: Partial<SystemBackupJSON>;
+}

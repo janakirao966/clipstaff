@@ -63,4 +63,53 @@ describe('content script trigger expansion integration', () => {
     expect(input.value).toBe('My mail is john@example.com');
     document.body.removeChild(input);
   });
+
+  it('should expand shortcuts on Space keydown', async () => {
+    const input = document.createElement('input');
+    document.body.appendChild(input);
+    input.focus();
+
+    input.value = ';greet';
+    input.selectionStart = ';greet'.length;
+    input.selectionEnd = ';greet'.length;
+
+    const event = new KeyboardEvent('keydown', { key: ' ', bubbles: true, cancelable: true });
+    input.dispatchEvent(event);
+
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(input.value).toBe('Hello world! ');
+    document.body.removeChild(input);
+  });
+
+  it('should expand shortcuts on semicolon trigger keydown', async () => {
+    // Pre-seed storage with a shortcut
+    await new Promise<void>((resolve) => {
+      chrome.storage.local.set(
+        {
+          clipstaff_shortcuts: {
+            'msa': 'Master Services Agreement',
+            'msa;': 'Master Services Agreement',
+          }
+        },
+        resolve
+      );
+    });
+
+    const input = document.createElement('input');
+    document.body.appendChild(input);
+    input.focus();
+
+    input.value = 'msa';
+    input.selectionStart = 3;
+    input.selectionEnd = 3;
+
+    const event = new KeyboardEvent('keydown', { key: ';', bubbles: true, cancelable: true });
+    input.dispatchEvent(event);
+
+    await new Promise((r) => setTimeout(r, 50));
+
+    expect(input.value).toBe('Master Services Agreement');
+    document.body.removeChild(input);
+  });
 });

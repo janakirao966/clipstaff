@@ -5,7 +5,7 @@ import { Briefcase } from 'lucide-react';
 import { toast } from 'sonner';
 import { useJobsDb } from '../hooks/useJobsDb';
 import { clearAllJobs } from '../lib/db';
-import { getSpreadsheetExportUrl, getSpreadsheetXlsxExportUrl, exportToExcel, worksheetToRows, parseRowsToJobs, parseCSV } from '../lib/csvHelper';
+import { getSpreadsheetExportUrl, getSpreadsheetXlsxExportUrl, exportToExcel, parseRowsToJobs, parseCSV, parseExcelWorkbookToSheets } from '../lib/csvHelper';
 import { VirtualizedJobList } from './jobs/VirtualizedJobList';
 import { JobFilters } from './jobs/JobFilters';
 import { CsvSyncSection } from './jobs/CsvSyncSection';
@@ -16,6 +16,8 @@ import { normalizeUrl, getJobId, extractCompanyFromUrl, extractRoleFromUrl, sani
 import { SyncProgressBar } from './jobs/SyncProgressBar';
 import { CountdownBanner } from './jobs/CountdownBanner';
 import { WipeConfirmationModal } from './jobs/WipeConfirmationModal';
+import { JobMetricsBar } from './jobs/JobMetricsBar';
+import { exportApplicationsJSON, inspectImportJSON } from '../lib/profileIO';
 
 interface SheetTab {
   name: string;
@@ -220,13 +222,7 @@ export const JobList = () => {
             bytes[i] = binaryString.charCodeAt(i);
           }
 
-          const ExcelJS = await import('exceljs');
-          const workbook = new ExcelJS.Workbook();
-          await workbook.xlsx.load(bytes.buffer);
-
-          let validSheets = workbook.worksheets.filter(
-            (s: any) => s.state !== 'hidden' && s.name !== '__meta__'
-          );
+          const validSheets = await parseExcelWorkbookToSheets(bytes.buffer);
 
           if (validSheets.length > 0) {
             const currentJobs = useStore.getState().jobs;
@@ -234,8 +230,7 @@ export const JobList = () => {
             if (validSheets.length === 1) {
               setSheetTabs([]);
               setSelectedSheetIdx(0);
-              const rows = worksheetToRows(validSheets[0]);
-              const parsedJobs = parseRowsToJobs(rows, currentJobs);
+              const parsedJobs = parseRowsToJobs(validSheets[0].rows, currentJobs);
               
               setSyncProgress({ current: 80, total: 100, stage: 'Importing jobs to vault...' });
               await localDb.importJobs(parsedJobs);
@@ -252,9 +247,8 @@ export const JobList = () => {
               });
             } else {
               setSyncProgress({ current: 70, total: 100, stage: 'Mapping profiles...' });
-              const tabs: SheetTab[] = validSheets.map((sheet: any) => {
-                const rows = worksheetToRows(sheet);
-                const sheetJobs = parseRowsToJobs(rows);
+              const tabs: SheetTab[] = validSheets.map((sheet) => {
+                const sheetJobs = parseRowsToJobs(sheet.rows);
                 return { name: sheet.name, jobs: sheetJobs };
               });
 
@@ -509,34 +503,22 @@ export const JobList = () => {
         if (ids.length === 0) return;
 
         const isVaultJob = !!selectedVaultProfile;
+        const targetJobs: { url: string; company?: string; role?: string }[] = [];
 
         for (const id of ids) {
           const job = displayedJobs.find(j => j.id === id);
           if (job) {
+            targetJobs.push({ url: job.url, company: job.company, role: job.role });
             if (isVaultJob) {
-              try {
-                await localDb.addJob(job.url, job.company, job.role, 'applied');
-                await localDb.updateVaultJobStatus(job.url, 'applied');
-              } catch (e) {
-                console.error('Failed to add vault job:', e);
-              }
+              await localDb.updateVaultJobStatus(job.url, 'applied').catch(() => {});
             } else if (viewMode === 'sheet') {
               updateJobStatus(job.url, 'applied');
-              const normalizedUrl = normalizeUrl(job.url);
-              const exists = localJobs.some(j => normalizeUrl(j.url) === normalizedUrl);
-              if (!exists) {
-                try {
-                  await localDb.addJob(job.url, job.company, job.role, 'applied');
-                } catch (e) {
-                  console.error('Failed to add sheet job to local database:', e);
-                }
-              } else {
-                await localDb.updateJobStatus(job.url, 'applied');
-              }
-            } else {
-              await localDb.updateJobStatus(job.url, 'applied');
             }
           }
+        }
+
+        if (targetJobs.length > 0) {
+          await localDb.batchUpdateJobStatuses(targetJobs, 'applied');
         }
 
         if (!isVaultJob && typeof chrome !== 'undefined' && chrome.runtime) {
@@ -547,7 +529,7 @@ export const JobList = () => {
           setPendingCount(0);
           updateBadge(0);
           toast.success('Confirmed!', {
-            description: `All pending applications marked as Applied.`
+            description: `All ${targetJobs.length} pending application(s) marked as Applied.`
           });
         });
       });
@@ -672,6 +654,30 @@ export const JobList = () => {
       if (!text) return;
 
       try {
+        if (file.name.endsWith('.json')) {
+          const report = inspectImportJSON(text, [], localJobs);
+          if (!report.isValid || report.applicationsToImport.items.length === 0) {
+            toast.error('Import Failed', { description: report.error || 'No valid job applications found in JSON.' });
+            return;
+          }
+
+          setActiveError(null);
+          setSyncProgress({ current: 0, total: report.applicationsToImport.items.length, stage: 'Importing JSON...' });
+
+          await localDb.importJobs(report.applicationsToImport.items, (progress) => {
+            setSyncProgress({
+              current: progress.current,
+              total: progress.total,
+              stage: 'Importing JSON...'
+            });
+          });
+
+          toast.success('Import Successful', {
+            description: `Successfully loaded ${report.applicationsToImport.items.length} applications from JSON.`
+          });
+          return;
+        }
+
         const rows = parseCSV(text);
         if (rows.length === 0) {
           toast.error('Import Failed', { description: 'The CSV file is empty.' });
@@ -754,7 +760,7 @@ export const JobList = () => {
           }
         });
       } catch (err: any) {
-        console.error('CSV import error:', err);
+        console.error('Import error:', err);
         const recovery = getErrorRecoveryDetails(err);
         setActiveError(recovery);
         toast.error('Import Failed', { description: recovery.desc });
@@ -792,6 +798,35 @@ export const JobList = () => {
     ? jobs 
     : (selectedVaultProfile ? (vaultJobs as any[]) : localJobs);
 
+  const parseDateStr = useCallback((dateStr?: string): Date | null => {
+    const normalized = normalizeDateStr(dateStr);
+    if (!normalized) return null;
+    const parts = normalized.split('/');
+    if (parts.length !== 3) return null;
+    const month = parseInt(parts[0], 10);
+    const day = parseInt(parts[1], 10);
+    const year = parseInt(parts[2], 10);
+    if (isNaN(month) || isNaN(day) || isNaN(year)) return null;
+    return new Date(year, month - 1, day);
+  }, []);
+
+  const getJobSortTimestamp = useCallback((job: Job): number => {
+    if (job.status === 'applied' && job.appliedAt) {
+      return job.appliedAt;
+    }
+    if (job.updatedAt) {
+      return job.updatedAt;
+    }
+    if (job.createdAt) {
+      return job.createdAt;
+    }
+    if (job.dateAdded) {
+      const parsed = parseDateStr(job.dateAdded);
+      if (parsed) return parsed.getTime();
+    }
+    return 0;
+  }, [parseDateStr]);
+
   const dateFilteredJobs = useMemo(() => {
     let result = displayedJobs;
 
@@ -803,18 +838,6 @@ export const JobList = () => {
       return d.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
     };
     const yesterdayStr = getYesterdayStr();
-
-    const parseDateStr = (dateStr?: string): Date | null => {
-      const normalized = normalizeDateStr(dateStr);
-      if (!normalized) return null;
-      const parts = normalized.split('/');
-      if (parts.length !== 3) return null;
-      const month = parseInt(parts[0], 10);
-      const day = parseInt(parts[1], 10);
-      const year = parseInt(parts[2], 10);
-      if (isNaN(month) || isNaN(day) || isNaN(year)) return null;
-      return new Date(year, month - 1, day);
-    };
 
     const isWithinLast7Days = (dateStr?: string) => {
       const d = parseDateStr(dateStr);
@@ -850,15 +873,7 @@ export const JobList = () => {
     }
 
     return result;
-  }, [displayedJobs, dateFilter, customDate]);
-
-  const stats = useMemo(() => {
-    const total = dateFilteredJobs.length;
-    const notApplied = dateFilteredJobs.filter(j => j.status === 'not_applied').length;
-    const applied = dateFilteredJobs.filter(j => j.status === 'applied').length;
-    const skipped = dateFilteredJobs.filter(j => j.status === 'skipped').length;
-    return { total, notApplied, applied, skipped };
-  }, [dateFilteredJobs]);
+  }, [displayedJobs, dateFilter, customDate, parseDateStr]);
 
   const filteredJobs = useMemo(() => {
     let result = dateFilteredJobs;
@@ -880,24 +895,60 @@ export const JobList = () => {
       );
     }
 
-    // Sort by status: not_applied -> applied -> skipped (robust normalization)
+    // In Sheet Mode, strictly preserve original spreadsheet 1-to-N row order
+    if (viewMode === 'sheet') {
+      return [...result].sort((a, b) => {
+        const rowA = a.rowIndex !== undefined ? a.rowIndex : 0;
+        const rowB = b.rowIndex !== undefined ? b.rowIndex : 0;
+        return rowA - rowB;
+      });
+    }
+
+    // In Local View and Universal Vault View:
+    // Sort by status: not_applied -> applied -> skipped,
+    // and within each status group (or single status tab), sort descending by timestamp (newest on top)
     return [...result].sort((a, b) => {
       const getStatusWeight = (status: string | undefined | null) => {
         if (!status) return 0;
         const norm = status.trim().toLowerCase().replace(/\s+/g, '_');
         if (norm === 'applied') return 1;
         if (norm === 'skipped') return 2;
-        return 0; // to_apply, not_applied, or any other value defaults to top
+        return 0; // to_apply, not_applied
       };
-      return getStatusWeight(a.status) - getStatusWeight(b.status);
+
+      const weightDiff = getStatusWeight(a.status) - getStatusWeight(b.status);
+      if (weightDiff !== 0) return weightDiff;
+
+      const timeA = getJobSortTimestamp(a);
+      const timeB = getJobSortTimestamp(b);
+      if (timeA !== timeB) {
+        return timeB - timeA; // Descending: newest on top
+      }
+
+      const rowA = a.rowIndex !== undefined ? a.rowIndex : 0;
+      const rowB = b.rowIndex !== undefined ? b.rowIndex : 0;
+      return rowA - rowB;
     });
-  }, [dateFilteredJobs, activeTab, debouncedSearchTerm]);
+  }, [dateFilteredJobs, activeTab, debouncedSearchTerm, viewMode, getJobSortTimestamp]);
 
 
 
   const onOpenAddModal = (mode: 'manual' | 'capture') => {
     setAddModalMode(mode);
     setShowAddModal(true);
+  };
+
+  const handleQuickFilter = (filter: 'today' | 'today_applied' | 'all') => {
+    if (filter === 'today') {
+      setDateFilter('today');
+      setActiveTab('all');
+    } else if (filter === 'today_applied') {
+      setDateFilter('today');
+      setActiveTab('applied');
+    } else {
+      setDateFilter('all');
+      setActiveTab('all');
+    }
   };
 
   return (
@@ -907,6 +958,12 @@ export const JobList = () => {
         activeError={activeError}
         onCloseError={() => setActiveError(null)}
       />
+
+      <JobMetricsBar 
+        jobs={displayedJobs} 
+        onSelectQuickFilter={handleQuickFilter} 
+      />
+
       <CsvSyncSection
         viewMode={viewMode}
         setViewMode={setViewMode}
@@ -918,13 +975,22 @@ export const JobList = () => {
         handleSyncJobs={handleSyncJobs}
         handleImportCSVFile={handleImportCSVFile}
         onExportCSV={() => exportToExcel(dateFilteredJobs, activeProfileToUse?.full_name || activeProfileToUse?.name)}
+        onExportJSON={() => exportApplicationsJSON(dateFilteredJobs, activeProfileToUse?.full_name || activeProfileToUse?.name || 'Applications')}
         onOpenAddModal={onOpenAddModal}
         onClearJobs={handleClearAllJobs}
         onExportMergeUniversal={(file) => exportMergeUniversal(file, activeProfileToUse?.full_name || activeProfileToUse?.name || 'Default_Profile', dateFilteredJobs)}
-        onImportUniversalVault={importUniversalVault}
+        onImportUniversalVault={async (file) => {
+          const result = await importUniversalVault(file);
+          if (result && result.success && result.profiles.length > 0) {
+            setViewMode('local');
+            // Automatically select the first loaded sheet profile
+            setSelectedVaultProfile(result.profiles[0]);
+          }
+        }}
         vaultProfiles={useMemo(() => {
-          const activeSanitized = sanitizeProfileName(activeProfileToUse?.full_name || activeProfileToUse?.name).toLowerCase();
+          const activeSanitized = sanitizeProfileName(activeProfileToUse?.full_name || activeProfileToUse?.name || '').toLowerCase();
           return vaultProfiles.filter(p => {
+            if (!activeSanitized) return true;
             const sanitizedP = sanitizeProfileName(p).toLowerCase();
             return sanitizedP !== activeSanitized;
           });
@@ -943,25 +1009,6 @@ export const JobList = () => {
         onDurationChange={handleDurationChange}
         isMergingSheet={isMergingSheet}
       />
-
-      <div className="grid grid-cols-4 gap-2">
-        <div className="py-2.5 px-2 bg-carbon border border-graphite rounded-xl text-center">
-          <div className="text-[8px] font-black text-ash uppercase tracking-widest mb-0.5">Total</div>
-          <div className="text-sm font-semibold text-paper">{stats.total}</div>
-        </div>
-        <div className="py-2.5 px-2 bg-carbon border border-graphite rounded-xl text-center">
-          <div className="text-[8px] font-black text-ash uppercase tracking-widest mb-0.5">To Apply</div>
-          <div className="text-sm font-semibold text-mist">{stats.notApplied}</div>
-        </div>
-        <div className="py-2.5 px-2 bg-carbon border border-graphite rounded-xl text-center">
-          <div className="text-[8px] font-black text-pulse-green uppercase tracking-widest mb-0.5">Applied</div>
-          <div className="text-sm font-semibold text-pulse-green">{stats.applied}</div>
-        </div>
-        <div className="py-2.5 px-2 bg-carbon border border-graphite rounded-xl text-center">
-          <div className="text-[8px] font-black text-coral-red uppercase tracking-widest mb-0.5">Skipped</div>
-          <div className="text-sm font-semibold text-coral-red">{stats.skipped}</div>
-        </div>
-      </div>
 
       <CountdownBanner
         pendingConfirmJob={pendingConfirmJob}
@@ -996,17 +1043,29 @@ export const JobList = () => {
 
       <div className="space-y-4">
         {filteredJobs.length === 0 ? (
-          <div className="py-12 border border-dashed border-graphite rounded-md flex flex-col items-center justify-center">
-            <Briefcase className="w-8 h-8 mb-3 text-graphite" />
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-ash text-center px-4">
+          <div className="py-12 border border-dashed border-graphite rounded-2xl flex flex-col items-center justify-center bg-carbon/50 p-6 space-y-3">
+            <Briefcase className="w-8 h-8 text-graphite" />
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-ash text-center max-w-xs">
               {displayedJobs.length === 0 
                 ? (selectedVaultProfile
                   ? 'No applications found for this profile.'
                   : (viewMode === 'local' 
                     ? 'No local applications saved yet. Click "Save Tab" to track one.' 
                     : 'No jobs found. Click "Refresh Jobs" to fetch.'))
-                : 'No matching jobs found.'}
+                : 'No matching jobs found with current search / filters.'}
             </p>
+            {displayedJobs.length > 0 && (
+              <button
+                onClick={() => {
+                  setSearchTerm('');
+                  setActiveTab('all');
+                  setDateFilter('all');
+                }}
+                className="px-3.5 py-1.5 rounded-lg bg-void border border-graphite hover:border-accent/40 text-[10px] font-bold text-accent uppercase tracking-wider transition-all"
+              >
+                Reset Filters
+              </button>
+            )}
           </div>
         ) : (
           <VirtualizedJobList
@@ -1034,7 +1093,7 @@ export const JobList = () => {
 
       <ConfirmAppliedModal
         isOpen={showConfirmModal}
-        onClose={() => handleConfirmApplied(false)}
+        onClose={() => handleConfirmApplied('not-yet')}
         pendingJob={pendingConfirmJob}
         onConfirm={handleConfirmApplied}
       />

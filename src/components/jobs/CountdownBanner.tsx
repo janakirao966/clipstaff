@@ -6,7 +6,7 @@ interface CountdownBannerProps {
   countdown: number | null;
   isTimerPaused: boolean;
   setIsTimerPaused: (paused: boolean) => void;
-  handleConfirmApplied: (applied: boolean) => void;
+  handleConfirmApplied: (status: 'applied' | 'not-yet' | 'skipped') => void;
   pendingCount: number;
   handleResolveAllPendingConfirmations: () => void;
   handleDismissAllPendingConfirmations: () => void;
@@ -50,13 +50,13 @@ export const CountdownBanner: React.FC<CountdownBannerProps> = ({
               </button>
             )}
             <button
-              onClick={() => handleConfirmApplied(true)}
+              onClick={() => handleConfirmApplied('applied')}
               className="px-2.5 py-1 bg-pulse-green/10 hover:bg-pulse-green/20 text-pulse-green border border-pulse-green/25 rounded-lg text-[8px] font-black uppercase tracking-wider transition-all"
             >
               Yes
             </button>
             <button
-              onClick={() => handleConfirmApplied(false)}
+              onClick={() => handleConfirmApplied('not-yet')}
               className="px-2.5 py-1 bg-white/5 hover:bg-white/10 text-ash border border-graphite rounded-lg text-[8px] font-black uppercase tracking-wider transition-all"
             >
               No

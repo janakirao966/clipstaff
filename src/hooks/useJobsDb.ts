@@ -2,11 +2,12 @@ import { useState, useEffect, useCallback } from 'react';
 import { Job, VaultJob } from '../types';
 import * as db from '../lib/db';
 import { extractCompanyFromUrl, extractRoleFromUrl, getJobId, normalizeUrl, sanitizeProfileName, normalizeDateStr } from '../lib/extractor';
-import { toast } from 'sonner';
+import { checkCompanyExclusion } from '../lib/exclusionHelper';
+import { parseExcelWorkbookToSheets, parseRowsToJobs } from '../lib/csvHelper';
 import { useStore } from '../store/useStore';
+import { toast } from 'sonner';
 
 export const useJobsDb = () => {
-  const activeProfile = useStore(state => state.activeProfile);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
 
@@ -102,8 +103,25 @@ export const useJobsDb = () => {
     const normUrl = normalizeUrl(url);
     const finalCompany = company || extractCompanyFromUrl(normUrl);
     const finalRole = role || extractRoleFromUrl(normUrl);
+
+    // Check Profile Experience & Exclusions
+    const state = useStore.getState();
+    const exclusion = checkCompanyExclusion({
+      url: normUrl,
+      companyName: finalCompany,
+      profile: state.activeProfile,
+      candidateExclusions: state.candidateExclusions,
+      globalExclusions: state.globalExclusions
+    });
+
+    if (exclusion.isExcluded) {
+      const warnMsg = exclusion.warningMessage || `⚠️ Exclusion Warning: "${exclusion.matchedCompany}" is in your experience list. Do not apply!`;
+      throw new Error(warnMsg);
+    }
+
     const id = getJobId(normUrl);
     const dateAdded = normalizeDateStr(new Date().toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' }));
+    const now = Date.now();
 
     const jobItem: Job = {
       id,
@@ -111,7 +129,10 @@ export const useJobsDb = () => {
       role: finalRole,
       url: normUrl,
       dateAdded,
-      status
+      status,
+      createdAt: now,
+      updatedAt: now,
+      appliedAt: status === 'applied' ? now : undefined
     };
 
     await db.addJob(jobItem);
@@ -136,6 +157,21 @@ export const useJobsDb = () => {
     }
   }, [loadJobs]);
 
+  const batchUpdateJobStatuses = useCallback(async (
+    jobsToUpdate: { url: string; company?: string; role?: string }[],
+    status: Job['status']
+  ) => {
+    try {
+      await db.batchUpdateJobStatuses(jobsToUpdate, status);
+      await loadJobs();
+      if (typeof chrome !== 'undefined' && chrome.runtime) {
+        chrome.runtime.sendMessage({ type: 'JOB_DATABASE_CHANGED' });
+      }
+    } catch (e) {
+      console.error('Failed to batch update job statuses:', e);
+    }
+  }, [loadJobs]);
+
   const deleteJob = useCallback(async (id: string) => {
     console.log('[ClipStaff Hook] deleteJob called with ID:', id);
     try {
@@ -157,7 +193,11 @@ export const useJobsDb = () => {
     onProgress?: (progress: { current: number; total: number; successCount: number; failedCount: number }) => void
   ) => {
     try {
-      const sanitized = sheetJobs.map(job => ({ ...job, url: normalizeUrl(job.url) }));
+      const sanitized = sheetJobs.map((job, idx) => ({ 
+        ...job, 
+        url: normalizeUrl(job.url),
+        rowIndex: job.rowIndex !== undefined ? job.rowIndex : idx + 1
+      }));
       await db.importJobsBulk(sanitized, onProgress);
       await loadJobs();
       if (typeof chrome !== 'undefined' && chrome.runtime) {
@@ -170,134 +210,77 @@ export const useJobsDb = () => {
   }, [loadJobs]);
 
   // Universal Vault Import Handler
-  const importUniversalVault = useCallback(async (file: File): Promise<void> => {
-    const loadingToast = toast.loading('Importing Universal Excel Vault...');
+  const importUniversalVault = useCallback(async (file: File): Promise<{ success: boolean; profiles: string[]; totalJobs: number }> => {
+    const loadingToast = toast.loading('Importing Excel Vault...');
 
     try {
-      const ExcelJS = await import('exceljs');
-      const workbook = new ExcelJS.Workbook();
       const arrayBuffer = await file.arrayBuffer();
-      await workbook.xlsx.load(arrayBuffer);
+      const sheets = await parseExcelWorkbookToSheets(arrayBuffer);
 
-      // 1. Version checking
-      const metaSheet = workbook.getWorksheet('__meta__');
-      if (metaSheet) {
-        const versionCell = metaSheet.getCell('A1').value;
-        if (versionCell && versionCell.toString() !== '1.0.0') {
-          toast.warning('Newer Vault Version Detected', {
-            description: `Loaded version ${versionCell.toString()} might have features not supported in this build.`
-          });
-        }
+      if (sheets.length === 0) {
+        throw new Error('Workbook contains no readable worksheets or rows.');
       }
 
       const allVaultJobs: VaultJob[] = [];
-      let validSheetsCount = 0;
+      const loadedProfileNames: string[] = [];
 
-      workbook.worksheets.forEach(sheet => {
-        // Skip hidden meta sheet
-        if (sheet.name === '__meta__') return;
+      for (const sheet of sheets) {
+        // Parse rows to standard Job objects
+        const parsedJobs = parseRowsToJobs(sheet.rows);
+        if (parsedJobs.length === 0) continue;
 
-        // Parse and validate headers (S.No., Company, Role, URL, Status, Date Added)
-        const headerRow = sheet.getRow(1);
-        const headersList: string[] = [];
-        headerRow.eachCell((cell) => {
-          if (cell.value) headersList.push(cell.value.toString().toLowerCase().trim());
-        });
+        loadedProfileNames.push(sheet.name);
 
-        // Column validations
-        const companyIdx = headersList.indexOf('company');
-        const roleIdx = headersList.indexOf('role');
-        const urlIdx = headersList.indexOf('url');
-        const statusIdx = headersList.indexOf('status');
-        const dateIdx = headersList.indexOf('date added');
-
-        if (companyIdx === -1 || roleIdx === -1 || urlIdx === -1 || statusIdx === -1) {
-          console.warn(`ClipStaff: Skipping sheet "${sheet.name}" due to missing expected columns.`);
-          return;
-        }
-
-        validSheetsCount++;
-
-        // Read row records
-        sheet.eachRow((row, rowNumber) => {
-          if (rowNumber === 1) return; // Skip header row
-
-          const getCellStrVal = (idx: number) => {
-            const cell = row.getCell(idx + 1);
-            if (!cell || cell.value === null || cell.value === undefined) return '';
-            if (typeof cell.value === 'object' && 'text' in cell.value) {
-              return cell.value.text.toString();
-            }
-            if (typeof cell.value === 'object' && 'hyperlink' in cell.value) {
-              return cell.value.hyperlink?.toString() || '';
-            }
-            return cell.value.toString();
-          };
-
-          const company = getCellStrVal(companyIdx);
-          const role = getCellStrVal(roleIdx);
-          const url = getCellStrVal(urlIdx);
-          const statusVal = getCellStrVal(statusIdx).toLowerCase().replace(/\s+/g, '_');
-          const dateAdded = dateIdx !== -1 ? normalizeDateStr(getCellStrVal(dateIdx)) : '';
-
-          // Skip rows lacking primary URL/Company
-          if (!url || !company) return;
-
-          const status: Job['status'] = (statusVal === 'applied' || statusVal === 'skipped') 
-            ? statusVal 
-            : 'not_applied';
-
+        parsedJobs.forEach((job, idx) => {
           allVaultJobs.push({
-            id: `vault-${sheet.name}-${getJobId(url, rowNumber)}`,
+            id: `vault-${sheet.name}-${getJobId(job.url, idx + 1)}`,
             profileName: sheet.name,
-            company,
-            role,
-            url,
-            status,
-            dateAdded
+            company: job.company,
+            role: job.role,
+            url: job.url,
+            status: job.status,
+            dateAdded: job.dateAdded,
+            rowIndex: job.rowIndex !== undefined ? job.rowIndex : idx + 1,
+            createdAt: job.createdAt || (Date.now() - (parsedJobs.length - idx) * 10),
+            updatedAt: job.updatedAt || Date.now()
           });
         });
-      });
+      }
 
-      if (validSheetsCount === 0) {
-        throw new Error('Workbook contains no valid candidate worksheets.');
+      if (allVaultJobs.length === 0) {
+        throw new Error('No valid job links found in the uploaded spreadsheet.');
       }
 
       // Overwrite database store
       await db.clearUniversalVault();
       await db.saveUniversalVaultJobs(allVaultJobs);
       
-      // Refresh list
+      // Refresh list of profiles
       await loadVaultProfiles();
 
-      // Filter own sheet out of notification count
-      const activeSanitizedName = sanitizeProfileName(activeProfile?.name || '').toLowerCase();
-      const activeSanitizedFullName = sanitizeProfileName(activeProfile?.full_name || '').toLowerCase();
-
-      const hasOwnSheet = workbook.worksheets.some(sheet => {
-        if (sheet.name === '__meta__') return false;
-        const nameSanitized = sanitizeProfileName(sheet.name).toLowerCase();
-        return nameSanitized === activeSanitizedName || nameSanitized === activeSanitizedFullName;
-      });
-
-      const otherProfilesCount = hasOwnSheet ? Math.max(0, validSheetsCount - 1) : validSheetsCount;
-      const otherJobsCount = allVaultJobs.filter(job => {
-        const jobProfileSanitized = sanitizeProfileName(job.profileName).toLowerCase();
-        return jobProfileSanitized !== activeSanitizedName && jobProfileSanitized !== activeSanitizedFullName;
-      }).length;
-
       toast.dismiss(loadingToast);
-      toast.success('Vault Imported Successfully', {
-        description: `Loaded ${otherProfilesCount} other profile worksheets with ${otherJobsCount} total applications.`
+      toast.success('Vault Loaded Successfully', {
+        description: `Loaded ${loadedProfileNames.length} profile ${loadedProfileNames.length === 1 ? 'sheet' : 'sheets'} with ${allVaultJobs.length} total applications.`
       });
+
+      return {
+        success: true,
+        profiles: loadedProfileNames,
+        totalJobs: allVaultJobs.length
+      };
     } catch (err: any) {
       console.error('Failed to import universal vault:', err);
       toast.dismiss(loadingToast);
-      toast.error('Import Failed', {
-        description: err.message || 'Invalid or corrupted workbook.'
+      toast.error('Vault Load Failed', {
+        description: err.message || 'Invalid or unreadable Excel file.'
       });
+      return {
+        success: false,
+        profiles: [],
+        totalJobs: 0
+      };
     }
-  }, [loadVaultProfiles, activeProfile]);
+  }, [loadVaultProfiles]);
 
   // Universal Vault Export/Merge Handler
   const exportMergeUniversal = useCallback(async (
@@ -623,6 +606,7 @@ export const useJobsDb = () => {
     loadJobs,
     addJob,
     updateJobStatus,
+    batchUpdateJobStatuses,
     deleteJob,
     importJobs,
     getActiveTabInfo,

@@ -3,12 +3,21 @@ import { Auth } from './components/Auth'
 import { useAuth } from './hooks/useAuth'
 import { autofillForm } from './lib/autofill'
 import { UnifiedVault } from './components/UnifiedVault'
-import { ResumeBuilder } from './components/ResumeBuilder'
-import { JobList } from './components/JobList'
-import { EligibilityChecker } from './components/EligibilityChecker'
 import { useProfiles } from './hooks/useProfiles'
 import { ProfileDrawer } from './components/ProfileDrawer'
 import { Toaster, toast } from 'sonner'
+
+// Dynamic code splitting for heavy modules (PDF & Excel generation)
+const ResumeBuilder = React.lazy(() => import('./components/ResumeBuilder').then(m => ({ default: m.ResumeBuilder })));
+const JobList = React.lazy(() => import('./components/JobList').then(m => ({ default: m.JobList })));
+const EligibilityChecker = React.lazy(() => import('./components/EligibilityChecker').then(m => ({ default: m.EligibilityChecker })));
+
+const TabLoadingFallback = () => (
+  <div className="flex flex-col items-center justify-center h-48 gap-3 text-ash">
+    <div className="w-5 h-5 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+    <span className="text-[11px] font-mono tracking-wider uppercase text-mist">Loading module...</span>
+  </div>
+);
 import { 
   User, 
   LogOut, 
@@ -20,30 +29,22 @@ import {
   ShieldCheck
 } from 'lucide-react'
 import { useStore } from './store/useStore'
+import { useSnippets } from './hooks/useSnippets'
 import { syncShortcutsToStorage } from './lib/sync'
-import { Button, ErrorBoundary } from './components/ui'
+import { Button, ErrorBoundary, ClipStaffLogo } from './components/ui'
 import { runAllVerificationTests } from './lib/verification_tests'
-
-// ClipStaff Logo Component — uses the actual project icon
-const ClipStaffLogo = ({ size = 32, className = "" }: { size?: number; className?: string }) => (
-  <img 
-    src="/icons/icon128.png" 
-    alt="ClipStaff" 
-    width={size} 
-    height={size} 
-    className={`rounded-xl ${className}`}
-    style={{ imageRendering: 'auto' }}
-  />
-);
 
 function MainContent() {
   const { user, signOut } = useAuth();
   const snippets = useStore(state => state.snippets);
   const dynamicShortcuts = useStore(state => state.dynamicShortcuts);
   const activeProfile = useStore(state => state.activeProfile);
+  const profiles = useStore(state => state.profiles);
   const profileTriggers = useStore(state => state.profileTriggers);
   const syncStatus = useStore(state => state.syncStatus);
+  const tailoredCoverLetter = useStore(state => state.tailoredCoverLetter);
   const { fetchProfile } = useProfiles();
+  const { fetchSnippets } = useSnippets();
   const [activeTab, setActiveTab] = React.useState<'vault' | 'resume' | 'jobs' | 'match'>('vault');
   const [profileOpen, setProfileOpen] = React.useState(false);
   
@@ -69,28 +70,52 @@ function MainContent() {
   }, []);
 
   // Handle switching tabs and saving state
-  const handleTabChange = (tab: 'vault' | 'resume' | 'jobs' | 'match') => {
+  const handleTabChange = React.useCallback((tab: 'vault' | 'resume' | 'jobs' | 'match') => {
     setActiveTab(tab);
     if (typeof chrome !== 'undefined' && chrome.storage?.local) {
       chrome.storage.local.set({ lastActiveTab: tab });
     } else {
       localStorage.setItem('lastActiveTab', tab);
     }
-  };
+  }, []);
 
-  // Initial Profile Load
+  // Keyboard navigation for tabs (Alt+1..4)
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.altKey) {
+        if (e.key === '1') {
+          e.preventDefault();
+          handleTabChange('vault');
+        } else if (e.key === '2') {
+          e.preventDefault();
+          handleTabChange('resume');
+        } else if (e.key === '3') {
+          e.preventDefault();
+          handleTabChange('jobs');
+        } else if (e.key === '4') {
+          e.preventDefault();
+          handleTabChange('match');
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleTabChange]);
+
+  // Initial Profile & Snippets Load
   React.useEffect(() => {
     if (user) {
       fetchProfile();
+      fetchSnippets();
     }
-  }, [user, fetchProfile]);
+  }, [user, fetchProfile, fetchSnippets]);
 
-  // Automatic Shortcut Sync (Manual + Dynamic + Profile)
+  // Automatic Shortcut Sync (Manual + Dynamic + Profile + List + Tailored Cover Letter)
   React.useEffect(() => {
     if (user) {
-      syncShortcutsToStorage(snippets, dynamicShortcuts, activeProfile, profileTriggers);
+      syncShortcutsToStorage(snippets, dynamicShortcuts, activeProfile, profileTriggers, profiles, tailoredCoverLetter);
     }
-  }, [snippets, dynamicShortcuts, activeProfile, profileTriggers, user]);
+  }, [snippets, dynamicShortcuts, activeProfile, profileTriggers, profiles, tailoredCoverLetter, user]);
 
   const handleAutofillPage = async () => {
     if (!activeProfile) {
@@ -148,12 +173,12 @@ function MainContent() {
 
   return (
     <div className="flex flex-col h-screen bg-void text-mist overflow-hidden selection:bg-accent/30 selection:text-void">
-      {/* Header with ClipStaff Logo */}
+      {/* Header with Animated ClipStaff Logo */}
       <header className="flex items-center justify-between px-6 py-4 border-b border-graphite bg-carbon">
         <div className="flex items-center gap-3">
-          <ClipStaffLogo size={32} />
+          <ClipStaffLogo size={34} animateMotion="float" withGlow />
           <div>
-            <h1 className="text-sm font-black tracking-tight uppercase leading-none">ClipStaff</h1>
+            <h1 className="text-sm font-black tracking-tight uppercase leading-none text-white">ClipStaff</h1>
           </div>
         </div>
         
@@ -251,10 +276,14 @@ function MainContent() {
       <main className="flex-1 overflow-y-auto p-4 custom-scrollbar">
         <div className="max-w-2xl mx-auto h-full">
           <ErrorBoundary>
-            {activeTab === 'vault' && <UnifiedVault onAutofill={handleAutofillPage} />}
-            {activeTab === 'resume' && <ResumeBuilder />}
-            {activeTab === 'jobs' && <JobList />}
-            {activeTab === 'match' && <EligibilityChecker />}
+            <div className={activeTab === 'vault' ? 'block' : 'hidden'}>
+              <UnifiedVault onAutofill={handleAutofillPage} />
+            </div>
+            <React.Suspense fallback={<TabLoadingFallback />}>
+              {activeTab === 'resume' && <ResumeBuilder />}
+              {activeTab === 'jobs' && <JobList />}
+              {activeTab === 'match' && <EligibilityChecker />}
+            </React.Suspense>
           </ErrorBoundary>
         </div>
       </main>
@@ -322,12 +351,11 @@ function App() {
 
   if (loading) {
     return (
-      <div className="h-screen bg-background flex flex-col items-center justify-center gap-6">
+      <div className="h-screen bg-void flex flex-col items-center justify-center gap-6 select-none">
         <div className="relative flex items-center justify-center">
-          <div className="absolute inset-0 bg-accent/20 blur-xl rounded-full scale-125 animate-pulse" />
-          <ClipStaffLogo size={56} className="relative z-10 animate-bounce" />
+          <ClipStaffLogo size={68} animateMotion="swing" withGlow glowColor="rgba(228, 242, 34, 0.35)" />
         </div>
-        <div className="text-[10px] font-bold text-muted uppercase tracking-[0.2em] animate-pulse">Loading ClipStaff</div>
+        <div className="text-[10px] font-bold text-ash uppercase tracking-[0.25em] animate-pulse">Loading ClipStaff</div>
       </div>
     )
   }

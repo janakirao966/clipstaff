@@ -7,8 +7,8 @@ import path from 'path';
 export default defineConfig({
   plugins: [
     react(),
-    crx({ manifest: manifest as any }),
-  ],
+    !process.env.VITEST && crx({ manifest: manifest as any }),
+  ].filter(Boolean) as any,
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),

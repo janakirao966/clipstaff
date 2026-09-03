@@ -103,6 +103,15 @@ export const SnippetList = ({
       add(`deg${num}`, edu.degree, `Edu ${num} Degree`);
       add(`major${num}`, edu.field_of_study, `Edu ${num} Major`);
     });
+
+    const certsList = activeProfile.certifications || [];
+    certsList.forEach((cert, idx) => {
+      const num = idx + 1;
+      add(`cert${num}`, cert, `Cert ${num}`);
+    });
+    if (certsList.length > 0) {
+      add('certs;', certsList.map(c => `- ${c}`).join('\n'), 'All Certifications');
+    }
     
     return list;
   }, [activeProfile]);
@@ -290,13 +299,13 @@ export const SnippetList = ({
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                  <div className="flex items-center gap-1 opacity-60 group-hover:opacity-100 transition-all">
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
                         handleShortcutClickLocal(item.text, item.shortcut);
                       }}
-                      className="p-2 text-muted hover:text-accent-light transition-all"
+                      className="p-2 text-ash hover:text-accent-light transition-all"
                       title="Copy to clipboard"
                     >
                       <Copy className="w-3.5 h-3.5" />
@@ -306,7 +315,7 @@ export const SnippetList = ({
                         e.stopPropagation();
                         onEditProfile(item);
                       }}
-                      className="p-2 text-muted hover:text-white"
+                      className="p-2 text-ash hover:text-white transition-all"
                       title="Edit profile shortcut"
                     >
                       <Edit2 className="w-3.5 h-3.5" />
@@ -368,20 +377,20 @@ export const SnippetList = ({
                     className={`p-2 transition-all ${
                       item.is_pinned 
                         ? 'text-accent opacity-100' 
-                        : 'text-muted hover:text-white opacity-0 group-hover:opacity-100'
+                        : 'text-ash hover:text-white opacity-60 group-hover:opacity-100'
                     }`}
                     title={item.is_pinned ? 'Unpin shortcut' : 'Pin shortcut (max 5)'}
                   >
                     <Pin className={`w-3.5 h-3.5 ${item.is_pinned ? 'fill-current text-accent' : ''}`} />
                   </button>
 
-                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                  <div className="flex items-center gap-1 opacity-60 group-hover:opacity-100 transition-all">
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
                         handleShortcutClickLocal(item.text, item.shortcut);
                       }}
-                      className="p-2 text-muted hover:text-accent-light transition-all"
+                      className="p-2 text-ash hover:text-accent-light transition-all"
                       title="Copy to clipboard"
                     >
                       <Copy className="w-3.5 h-3.5" />
@@ -391,7 +400,7 @@ export const SnippetList = ({
                         e.stopPropagation();
                         onEditSnippet(item);
                       }}
-                      className="p-2 text-muted hover:text-white"
+                      className="p-2 text-ash hover:text-white transition-all"
                       title="Edit shortcut"
                     >
                       <Edit2 className="w-3.5 h-3.5" />
@@ -401,7 +410,7 @@ export const SnippetList = ({
                         e.stopPropagation();
                         setDeletingId(item.id);
                       }}
-                      className="p-2 text-muted hover:text-coral-red"
+                      className="p-2 text-ash hover:text-coral-red transition-all"
                       title="Delete shortcut"
                     >
                       <Trash2 className="w-3.5 h-3.5" />

@@ -1,5 +1,5 @@
 import { Job, VaultJob } from '../types';
-import { normalizeUrl, getJobId } from './extractor';
+import { normalizeUrl, getJobId, extractCompanyFromUrl, extractRoleFromUrl, normalizeDateStr } from './extractor';
 
 const DB_NAME = 'ClipStaffDB';
 const DB_VERSION = 4;
@@ -146,13 +146,17 @@ export const addJob = async (job: Job): Promise<void> => {
           if (getRequest.result) {
             reject(new Error('Already saved'));
           } else {
-            const jobWithSync = {
+            const now = Date.now();
+            const jobWithSync: Job = {
               ...job,
               url: normalizedUrl,
               id: job.id || getJobId(normalizedUrl),
               syncState: job.syncState === 'synced' ? 'synced' : ('pending' as const),
               retryCount: job.syncState === 'synced' ? undefined : 0,
-              version: 1
+              version: 1,
+              createdAt: job.createdAt || now,
+              updatedAt: job.updatedAt || now,
+              appliedAt: job.status === 'applied' ? (job.appliedAt || now) : undefined
             };
             const addRequest = store.add(jobWithSync);
             addRequest.onsuccess = () => resolve();
@@ -182,6 +186,7 @@ export const updateJob = async (job: Job): Promise<void> => {
         const getReq = store.get(job.id);
         getReq.onsuccess = () => {
           const existing = getReq.result as Job | undefined;
+          const now = Date.now();
           if (existing) {
             // OCC version check
             if (job.version !== undefined && existing.version !== undefined && job.version !== existing.version) {
@@ -189,25 +194,31 @@ export const updateJob = async (job: Job): Promise<void> => {
               return;
             }
             
-            const updated = {
+            const updated: Job = {
               ...existing,
               ...job,
               url: normalizeUrl(job.url),
               syncState: 'pending' as const,
               retryCount: 0,
-              version: (existing.version || 0) + 1
+              version: (existing.version || 0) + 1,
+              createdAt: existing.createdAt || job.createdAt || now,
+              updatedAt: now,
+              appliedAt: job.status === 'applied' && existing.status !== 'applied' ? now : (job.appliedAt || existing.appliedAt)
             };
             
             const putReq = store.put(updated);
             putReq.onsuccess = () => resolve();
             putReq.onerror = () => reject(putReq.error || new Error('Failed to update job'));
           } else {
-            const jobWithSync = {
+            const jobWithSync: Job = {
               ...job,
               url: normalizeUrl(job.url),
               syncState: 'pending' as const,
               retryCount: 0,
-              version: 1
+              version: 1,
+              createdAt: job.createdAt || now,
+              updatedAt: job.updatedAt || now,
+              appliedAt: job.status === 'applied' ? (job.appliedAt || now) : undefined
             };
             const addReq = store.add(jobWithSync);
             addReq.onsuccess = () => resolve();
@@ -263,18 +274,152 @@ export const updateJobStatusByUrl = async (url: string, status: Job['status']): 
         getRequest.onsuccess = () => {
           const existing = getRequest.result as Job | undefined;
           if (existing) {
-            const updated = { 
+            const now = Date.now();
+            const updated: Job = { 
               ...existing, 
               status,
               syncState: 'pending' as const,
               retryCount: 0,
-              version: (existing.version || 0) + 1
+              version: (existing.version || 0) + 1,
+              updatedAt: now,
+              appliedAt: status === 'applied' && existing.status !== 'applied' ? now : existing.appliedAt
             };
             const putRequest = store.put(updated);
             putRequest.onsuccess = () => resolve();
             putRequest.onerror = () => reject(putRequest.error || new Error('Failed to update job status'));
           } else {
             resolve();
+          }
+        };
+
+        getRequest.onerror = () => {
+          reject(getRequest.error || new Error('Failed to query job by URL'));
+        };
+      });
+    });
+  } finally {
+    release();
+  }
+};
+
+export const batchUpdateJobStatuses = async (
+  jobsToUpdate: { url: string; company?: string; role?: string }[],
+  status: Job['status']
+): Promise<void> => {
+  if (!jobsToUpdate || jobsToUpdate.length === 0) return;
+  const release = await dbWriteMutex.acquire();
+  try {
+    await withRetry(async () => {
+      const db = await initDB();
+      return new Promise<void>((resolve, reject) => {
+        const transaction = db.transaction(STORE_NAME, 'readwrite');
+        const store = transaction.objectStore(STORE_NAME);
+        const index = store.index('url');
+        const now = Date.now();
+        const today = normalizeDateStr(new Date().toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' }));
+
+        let hasError = false;
+        transaction.onerror = () => {
+          hasError = true;
+          reject(transaction.error || new Error('Transaction aborted in batchUpdateJobStatuses'));
+        };
+        transaction.oncomplete = () => {
+          if (!hasError) resolve();
+        };
+
+        jobsToUpdate.forEach(({ url, company, role }, idx) => {
+          const normUrl = normalizeUrl(url);
+          const getRequest = index.get(normUrl);
+
+          getRequest.onsuccess = () => {
+            const existing = getRequest.result as Job | undefined;
+            if (existing) {
+              const updated: Job = {
+                ...existing,
+                status,
+                syncState: 'pending' as const,
+                retryCount: 0,
+                version: (existing.version || 0) + 1,
+                updatedAt: now,
+                appliedAt: status === 'applied' && existing.status !== 'applied' ? now : existing.appliedAt
+              };
+              store.put(updated);
+            } else {
+              const finalCompany = company || extractCompanyFromUrl(normUrl);
+              const finalRole = role || extractRoleFromUrl(normUrl);
+              const newJob: Job = {
+                id: getJobId(normUrl, idx + 1),
+                url: normUrl,
+                company: finalCompany,
+                role: finalRole,
+                status,
+                dateAdded: today,
+                syncState: 'pending' as const,
+                version: 1,
+                createdAt: now,
+                updatedAt: now,
+                appliedAt: status === 'applied' ? now : undefined
+              };
+              store.add(newJob);
+            }
+          };
+        });
+      });
+    });
+  } finally {
+    release();
+  }
+};
+
+export const markJobAppliedByUrl = async (url: string, company?: string, role?: string): Promise<Job> => {
+  const release = await dbWriteMutex.acquire();
+  try {
+    return await withRetry(async () => {
+      const db = await initDB();
+      return new Promise<Job>((resolve, reject) => {
+        const transaction = db.transaction(STORE_NAME, 'readwrite');
+        const store = transaction.objectStore(STORE_NAME);
+        const index = store.index('url');
+        const normalizedUrl = normalizeUrl(url);
+        const getRequest = index.get(normalizedUrl);
+
+        getRequest.onsuccess = () => {
+          const existing = getRequest.result as Job | undefined;
+          const today = normalizeDateStr(new Date().toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' }));
+          const now = Date.now();
+          if (existing) {
+            const updated: Job = {
+              ...existing,
+              status: 'applied',
+              dateAdded: existing.dateAdded || today,
+              syncState: 'pending' as const,
+              retryCount: 0,
+              version: (existing.version || 0) + 1,
+              updatedAt: now,
+              appliedAt: now
+            };
+            const putRequest = store.put(updated);
+            putRequest.onsuccess = () => resolve(updated);
+            putRequest.onerror = () => reject(putRequest.error || new Error('Failed to update job status'));
+          } else {
+            const finalCompany = company || extractCompanyFromUrl(normalizedUrl);
+            const finalRole = role || extractRoleFromUrl(normalizedUrl);
+            const newJob: Job = {
+              id: getJobId(normalizedUrl),
+              url: normalizedUrl,
+              company: finalCompany,
+              role: finalRole,
+              status: 'applied',
+              dateAdded: today,
+              syncState: 'pending' as const,
+              version: 1,
+              createdAt: now,
+              updatedAt: now,
+              appliedAt: now
+            };
+            const addReq = store.add(newJob);
+            addReq.onsuccess = () => resolve(newJob);
+            addReq.onerror = () => reject(addReq.error || new Error('Failed to add applied job'));
           }
         };
 
@@ -321,29 +466,37 @@ export const importJobsBulk = async (
             }
           };
           
-          batch.forEach(job => {
+          batch.forEach((job, bIdx) => {
             const normUrl = normalizeUrl(job.url);
             const getRequest = index.get(normUrl);
+            const globalIdx = i + bIdx;
             
             getRequest.onsuccess = () => {
               const existing = getRequest.result as Job | undefined;
+              const now = Date.now();
               if (existing) {
-                const updated = { 
+                const updated: Job = { 
                   ...existing, 
                   ...job, 
                   url: normUrl,
                   id: existing.id,
                   syncState: job.syncState || existing.syncState || 'pending',
-                  version: (existing.version || 0) + 1
+                  version: (existing.version || 0) + 1,
+                  createdAt: existing.createdAt || job.createdAt || now,
+                  updatedAt: now,
+                  rowIndex: job.rowIndex !== undefined ? job.rowIndex : existing.rowIndex
                 };
                 store.put(updated);
               } else {
-                const newJob = {
+                const newJob: Job = {
                   ...job,
                   url: normUrl,
-                  id: job.id || getJobId(normUrl),
+                  id: job.id || getJobId(normUrl, globalIdx + 1),
                   syncState: job.syncState || 'pending',
-                  version: 1
+                  version: 1,
+                  createdAt: job.createdAt || now,
+                  updatedAt: job.updatedAt || now,
+                  rowIndex: job.rowIndex !== undefined ? job.rowIndex : globalIdx + 1
                 };
                 store.add(newJob);
               }
@@ -455,6 +608,12 @@ export const getUniversalJobsByProfile = async (profileName: string): Promise<Va
         }
         cursor.continue();
       } else {
+        results.sort((a, b) => {
+          if (a.rowIndex !== undefined && b.rowIndex !== undefined) {
+            return a.rowIndex - b.rowIndex;
+          }
+          return 0;
+        });
         resolve(results);
       }
     };
@@ -497,7 +656,17 @@ export const getAllUniversalJobs = async (): Promise<VaultJob[]> => {
     const request = store.getAll();
 
     request.onsuccess = () => {
-      resolve((request.result as VaultJob[]) || []);
+      const results = (request.result as VaultJob[]) || [];
+      results.sort((a, b) => {
+        if (a.profileName !== b.profileName) {
+          return a.profileName.localeCompare(b.profileName);
+        }
+        if (a.rowIndex !== undefined && b.rowIndex !== undefined) {
+          return a.rowIndex - b.rowIndex;
+        }
+        return 0;
+      });
+      resolve(results);
     };
 
     request.onerror = () => {

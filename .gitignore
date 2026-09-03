@@ -36,5 +36,15 @@ dist-ssr
 .env.test.local
 .env.production.local
 
+# Vite & Build artifacts
+vite.config.js.timestamp-*
+vite.config.ts.timestamp-*
+supabase/.temp/
+scratch/
+__pycache__/
+*.pyc
+
 # Gemini/Antigravity
 .gemini/
+# Added by code-review-graph
+.code-review-graph/

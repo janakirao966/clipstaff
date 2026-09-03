@@ -239,15 +239,33 @@ export const VirtualizedJobList = ({
     return () => clearTimeout(timer);
   }, [layoutMode, jobs.length]);
 
-  // Persist scroll offset
+  const scrollTimerRef = useRef<any>(null);
+
+  // Clean up timer on unmount
+  useEffect(() => {
+    return () => {
+      if (scrollTimerRef.current) {
+        clearTimeout(scrollTimerRef.current);
+      }
+    };
+  }, []);
+
+  // Persist scroll offset with 200ms debounce
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
     const scrollOffset = e.currentTarget.scrollTop;
     const key = `clipstaff_scroll_offset_${layoutMode}`;
-    if (typeof chrome !== 'undefined' && chrome.storage?.local) {
-      chrome.storage.local.set({ [key]: scrollOffset });
-    } else {
-      localStorage.setItem(key, scrollOffset.toString());
+    
+    if (scrollTimerRef.current) {
+      clearTimeout(scrollTimerRef.current);
     }
+
+    scrollTimerRef.current = setTimeout(() => {
+      if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+        chrome.storage.local.set({ [key]: scrollOffset });
+      } else {
+        localStorage.setItem(key, scrollOffset.toString());
+      }
+    }, 200);
   };
 
   const statusConfig = {

@@ -1,31 +1,4 @@
-import React from 'react';
-
-export const ClipStaffLogo = ({ size = 32, className = "" }: { size?: number; className?: string }) => (
-  <svg
-    width={size}
-    height={size}
-    viewBox="0 0 100 100"
-    fill="none"
-    xmlns="http://www.w3.org/2000/svg"
-    className={className}
-  >
-    <defs>
-      <linearGradient id="logo-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-        <stop offset="0%" stopColor="#e4f222" />
-        <stop offset="100%" stopColor="#a2ad14" />
-      </linearGradient>
-    </defs>
-    {/* Interlocking S & J Monogram */}
-    <path
-      d="M28.2 39L35.2 46.1C35.2 59.8 35.1 61.2 35.1 63C35.1 69.2 40.2 73.1 48 73.1C55.8 73.1 64.9 69.2 64.9 63V20H72.4V63C72.4 79.5 59.5 83 48 83C36.5 83 20.8 79.5 20.8 63V39H28.2Z"
-      fill="url(#logo-grad)"
-    />
-    <path
-      d="M48 17C61.3 17 64.9 26.5 64.9 36H57.4C57.4 28.5 54.3 23.8 48 23.8C41.7 23.8 38.6 28.5 38.6 36C38.6 42.6 42.1 45.4 50.1 49.3C61.4 54.8 68 58.6 68 68.2C68 77.7 59.8 83 48 83C36.2 83 28 77.7 28 68.2H35.5C35.5 75.7 39.8 76.2 48 76.2C56.2 76.2 60.5 75.7 60.5 68.2C60.5 61.6 57 58.8 49 54.9C37.6 49.4 31.1 45.6 31.1 36C31.1 26.5 39.3 17 48 17Z"
-      fill="url(#logo-grad)"
-    />
-  </svg>
-);
+export { ClipStaffLogo } from './ClipStaffLogo';
 
 interface CardProps {
   children: React.ReactNode;

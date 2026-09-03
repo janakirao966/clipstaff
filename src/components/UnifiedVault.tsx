@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { useStore } from '../store/useStore';
 import { useSnippets } from '../hooks/useSnippets';
 import { useProfiles } from '../hooks/useProfiles';
-import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { SnippetDetail } from './SnippetDetail';
 import { SnippetList } from './vault/SnippetList';
@@ -13,14 +12,14 @@ export const UnifiedVault = ({ onAutofill }: { onAutofill?: () => void }) => {
   const activeProfile = useStore(state => state.activeProfile);
   const { fetchSnippets } = useSnippets();
   const { saveProfile } = useProfiles();
-  const [loading, setLoading] = useState(true);
   const [editingSnippet, setEditingSnippet] = useState<any>(null);
   const [isAdding, setIsAdding] = useState(false);
   const [editingProfileItem, setEditingProfileItem] = useState<any>(null);
   const [profileEditValue, setProfileEditValue] = useState('');
 
+  // Non-blocking background sync
   useEffect(() => {
-    fetchSnippets().finally(() => setLoading(false));
+    fetchSnippets().catch(() => {});
   }, [fetchSnippets]);
 
   const handleSaveProfileShortcut = async (e: React.FormEvent) => {
@@ -85,16 +84,8 @@ export const UnifiedVault = ({ onAutofill }: { onAutofill?: () => void }) => {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 className="w-8 h-8 animate-spin text-accent" />
-      </div>
-    );
-  }
-
   return (
-    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700 pb-20">
+    <div className="space-y-6 pb-20">
       <ImportExportManager
         onAutofill={onAutofill}
         onAddShortcut={() => setIsAdding(true)}

@@ -17,7 +17,8 @@
     "clipboardRead",
     "scripting",
     "downloads",
-    "contextMenus"
+    "contextMenus",
+    "unlimitedStorage"
   ],
   "commands": {
     "save-current-job": {
@@ -49,8 +50,14 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://*/*", "http://*/*", "file://*/*"],
-      "js": ["src/content.ts"],
+      "matches": [
+        "https://*/*",
+        "http://*/*",
+        "file://*/*"
+      ],
+      "js": [
+        "src/content.ts"
+      ],
       "run_at": "document_idle",
       "all_frames": true
     }
@@ -64,11 +71,17 @@
         "public/icons/icon16.png",
         "public/icons/icon48.png",
         "public/icons/icon128.png",
+        "public/icons/logo.webp",
+        "public/logo.webp",
         "public/icon.svg",
+        "logo.webp",
+        "favicon.ico",
         "index.html",
         "assets/*"
       ],
-      "matches": ["<all_urls>"],
+      "matches": [
+        "<all_urls>"
+      ],
       "use_dynamic_url": false
     }
   ]

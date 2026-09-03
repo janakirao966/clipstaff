@@ -1,54 +1,181 @@
 /**
- * ClipStaff Autofill Engine - Modular ATS filling module
+ * ClipStaff Industrial-Grade ATS Autofill Engine
+ * Full coverage for Workday, Greenhouse, Lever, SmartRecruiters, Ashby, Taleo, iCIMS, SuccessFactors, LinkedIn, and generic ATS portals.
  */
 
 export function autofillForm(profile: any, isReRun = false): number {
+  if (!profile) return 0;
+
+  // Derive smart name components
+  const rawFullName = (profile.full_name || profile.name || '').trim();
+  const nameParts = rawFullName ? rawFullName.split(/\s+/) : [];
+  const firstName = profile.first_name || nameParts[0] || '';
+  const middleName = profile.middle_name || (nameParts.length > 2 ? nameParts.slice(1, -1).join(' ') : '');
+  const lastName = profile.last_name || (nameParts.length > 1 ? (profile.middle_name ? nameParts[nameParts.length - 1] : nameParts.slice(1).join(' ')) : '') || '';
+  const fullName = rawFullName || [firstName, middleName, lastName].filter(Boolean).join(' ');
+
+  // Derive smart location / address components
+  const rawLocation = (profile.location || profile.street_address || '').trim();
+  let streetAddress = profile.street_address || '';
+  let city = profile.city || '';
+  let state = profile.state || '';
+  let pinCode = profile.pin_code || '';
+
+  if ((!city || !state || !pinCode) && rawLocation) {
+    // Attempt parsing "City, ST 12345, USA" or "123 Main St, City, ST 12345"
+    const locParts = rawLocation.split(',').map((p: string) => p.trim());
+    if (locParts.length >= 3) {
+      if (!streetAddress && locParts.length === 4) streetAddress = locParts[0];
+      if (!city) city = locParts[locParts.length - 3] || locParts[0];
+      const stateZip = locParts[locParts.length - 2] || '';
+      const szMatch = stateZip.match(/([a-zA-Z\s]+)\s+(\d{5}(-\d{4})?|[a-zA-Z0-9]{3}\s?[a-zA-Z0-9]{3})/);
+      if (szMatch) {
+        if (!state) state = szMatch[1].trim();
+        if (!pinCode) pinCode = szMatch[2].trim();
+      } else if (!state) {
+        state = stateZip;
+      }
+    } else if (locParts.length === 2) {
+      if (!city) city = locParts[0];
+      if (!state) state = locParts[1];
+    }
+  }
+
+  // Parse phone variations
+  const rawPhone = (profile.phone || '').trim();
+  const cleanPhoneDigits = rawPhone.replace(/\D/g, '');
+  const usPhone10 = cleanPhoneDigits.length === 11 && cleanPhoneDigits.startsWith('1') 
+    ? cleanPhoneDigits.substring(1) 
+    : cleanPhoneDigits;
+  const formattedUsPhone = usPhone10.length === 10 
+    ? `(${usPhone10.substring(0, 3)}) ${usPhone10.substring(3, 6)}-${usPhone10.substring(6)}`
+    : rawPhone;
+
+  // Robust date parser for all ATS formats
   const parseDateString = (dateStr: string) => {
     const clean = (dateStr || '').trim();
-    if (!clean) return { month: '', monthNum: '', year: '' };
-    const parts = clean.split(/[\s/,-]+/);
-    let rawMonth = '';
-    let rawYear = '';
-    
-    if (parts.length === 1) {
-      rawYear = parts[0];
-    } else if (parts[0].length === 4) {
-      rawMonth = parts[1] || '';
-      rawYear = parts[0];
-    } else {
-      rawMonth = parts[0] || '';
-      rawYear = parts[1] || '';
+    if (!clean) {
+      return { 
+        month: '', 
+        monthNum: '', 
+        year: '', 
+        formattedMMYYYY: '', 
+        formattedYYYYMM: '', 
+        formattedMMDDYYYY: '', 
+        isPresent: false 
+      };
     }
-    
-    let monthNum = rawMonth;
-    const monthsMap: Record<string, string> = {
-      jan: '01', january: '01',
-      feb: '02', february: '02',
-      mar: '03', march: '03',
-      apr: '04', april: '04',
-      may: '05',
-      jun: '06', june: '06',
-      jul: '07', july: '07',
-      aug: '08', august: '08',
-      sep: '09', september: '09',
-      oct: '10', october: '10',
-      nov: '11', november: '11',
-      dec: '12', december: '12'
+
+    const isPresent = /present|current|now/i.test(clean);
+    if (isPresent) {
+      const now = new Date();
+      const curYear = String(now.getFullYear());
+      const curMonthNum = String(now.getMonth() + 1).padStart(2, '0');
+      const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+      const curMonthName = monthNames[now.getMonth()];
+      return {
+        month: curMonthName,
+        monthNum: curMonthNum,
+        year: curYear,
+        formattedMMYYYY: `${curMonthNum}/${curYear}`,
+        formattedYYYYMM: `${curYear}-${curMonthNum}`,
+        formattedMMDDYYYY: `${curMonthNum}/01/${curYear}`,
+        isPresent: true
+      };
+    }
+
+    const monthsMap: Record<string, { num: string; name: string }> = {
+      jan: { num: '01', name: 'January' }, january: { num: '01', name: 'January' },
+      feb: { num: '02', name: 'February' }, february: { num: '02', name: 'February' },
+      mar: { num: '03', name: 'March' }, march: { num: '03', name: 'March' },
+      apr: { num: '04', name: 'April' }, april: { num: '04', name: 'April' },
+      may: { num: '05', name: 'May' },
+      jun: { num: '06', name: 'June' }, june: { num: '06', name: 'June' },
+      jul: { num: '07', name: 'July' }, july: { num: '07', name: 'July' },
+      aug: { num: '08', name: 'August' }, august: { num: '08', name: 'August' },
+      sep: { num: '09', name: 'September' }, september: { num: '09', name: 'September' },
+      oct: { num: '10', name: 'October' }, october: { num: '10', name: 'October' },
+      nov: { num: '11', name: 'November' }, november: { num: '11', name: 'November' },
+      dec: { num: '12', name: 'December' }, december: { num: '12', name: 'December' }
     };
-    const cleanMonth = rawMonth.toLowerCase().replace(/[^a-z]/g, '');
-    if (monthsMap[cleanMonth]) {
-      monthNum = monthsMap[cleanMonth];
-    } else if (/^\d+$/.test(rawMonth)) {
-      monthNum = rawMonth.padStart(2, '0');
+
+    let rawYear = '';
+    let monthNum = '01';
+    let monthName = 'January';
+
+    // 1. Check for 4 digit year
+    const yearMatch = clean.match(/\b(19\d\d|20\d\d)\b/);
+    if (yearMatch) {
+      rawYear = yearMatch[1];
     }
-    
-    return { month: rawMonth, monthNum: monthNum, year: rawYear };
+
+    // 2. Check for textual month (e.g. Jan 2022 or January 2022)
+    const textMonthMatch = clean.match(/\b(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b/i);
+    if (textMonthMatch) {
+      const key = textMonthMatch[1].toLowerCase();
+      if (monthsMap[key]) {
+        monthNum = monthsMap[key].num;
+        monthName = monthsMap[key].name;
+      }
+    } else {
+      // 3. Check numeric month (e.g. 01/2022 or 2022-01)
+      const parts = clean.split(/[\s/,-]+/);
+      if (parts.length >= 2) {
+        if (parts[0].length === 4) {
+          const m = parseInt(parts[1], 10);
+          if (m >= 1 && m <= 12) {
+            monthNum = String(m).padStart(2, '0');
+            const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+            monthName = monthNames[m - 1] || 'January';
+          }
+        } else {
+          const m = parseInt(parts[0], 10);
+          if (m >= 1 && m <= 12) {
+            monthNum = String(m).padStart(2, '0');
+            const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+            monthName = monthNames[m - 1] || 'January';
+          }
+        }
+      }
+    }
+
+    if (!rawYear) {
+      rawYear = String(new Date().getFullYear());
+    }
+
+    return {
+      month: monthName,
+      monthNum: monthNum,
+      year: rawYear,
+      formattedMMYYYY: `${monthNum}/${rawYear}`,
+      formattedYYYYMM: `${rawYear}-${monthNum}`,
+      formattedMMDDYYYY: `${monthNum}/01/${rawYear}`,
+      isPresent: false
+    };
   };
 
-  const inputs = document.querySelectorAll('input:not([type="hidden"]), textarea, select, button[role="combobox"], div[role="combobox"]');
+  // Select all candidate interactive elements
+  // Recursive collector supporting standard DOM and Shadow DOM components
+  const collectAllInputs = (root: Document | ShadowRoot | HTMLElement): HTMLElement[] => {
+    const selector = 'input:not([type="hidden"]):not([type="submit"]):not([type="button"]):not([type="image"]), textarea, select, [role="combobox"], [data-automation-id*="SelectWidget"], [data-automation-id*="input"], [data-automation-id*="text"]';
+    let results = Array.from(root.querySelectorAll<HTMLElement>(selector));
+    
+    // Discover nested open Shadow Roots
+    const allElements = Array.from(root.querySelectorAll<HTMLElement>('*'));
+    allElements.forEach(el => {
+      if (el.shadowRoot) {
+        results = results.concat(collectAllInputs(el.shadowRoot));
+      }
+    });
+    
+    return results;
+  };
+
+  const inputs = collectAllInputs(document);
+
   let count = 0;
 
-  // Repeating sections state trackers
+  // Work experience & education repeating tracker indices
   let companyCount = 0;
   let titleCount = 0;
   let descCount = 0;
@@ -77,6 +204,7 @@ export function autofillForm(profile: any, isReRun = false): number {
     const autocomplete = (el.autocomplete || '').toLowerCase();
     const ariaLabel = (el.getAttribute('aria-label') || '').toLowerCase();
     const title = (el.title || '').toLowerCase();
+    const autoId = (el.getAttribute('data-automation-id') || el.getAttribute('data-test') || el.getAttribute('data-qa') || '').toLowerCase();
     
     // Fetch label text via standard labels or aria-labelledby
     let labelsText = el.labels ? Array.from(el.labels).map((l: any) => l.textContent || '').join(' ').toLowerCase() : '';
@@ -87,129 +215,75 @@ export function autofillForm(profile: any, isReRun = false): number {
         if (labelEl) labelsText = (labelEl.textContent || '').toLowerCase();
       }
     }
-     if (!labelsText) {
-       const formGroup = el.closest('div, tr, li, [class*="group"], [class*="field"], [class*="widget"]');
-       if (formGroup) {
-         const labeledSibling = formGroup.querySelector('[aria-labelledby], [aria-label]');
-         if (labeledSibling) {
-           const labelledBy = labeledSibling.getAttribute('aria-labelledby');
-           if (labelledBy) {
-             const labelEl = document.getElementById(labelledBy);
-             if (labelEl) labelsText = (labelEl.textContent || '').toLowerCase();
-           }
-           if (!labelsText) {
-             labelsText = (labeledSibling.getAttribute('aria-label') || '').toLowerCase();
-           }
-         }
-       }
-     }
-     if (!labelsText) {
-       let parent = el.parentElement;
-       while (parent && !labelsText) {
-         const labelEl = parent.querySelector('label');
-         if (labelEl) {
-           labelsText = (labelEl.textContent || '').toLowerCase();
-           break;
-         }
-         parent = parent.parentElement;
-       }
-     }
-
-    // Section contexts detection using preceding heading walker (compareDocumentPosition)
-    let sectionText = '';
-    const candidates = Array.from(document.querySelectorAll('*:not(input):not(textarea):not(select)'));
-    const headings = candidates.filter((node: any) => {
-      const text = (node.textContent || '').trim().toLowerCase();
-      if (text.length === 0 || text.length > 50) return false;
-      
-      const isSectionHeader = 
-        text.includes('education') || 
-        text.includes('school') ||
-        text.includes('academic') ||
-        text.includes('experience') || 
-        text.includes('work') || 
-        text.includes('job') || 
-        text.includes('employment') ||
-        text.includes('history') ||
-        text.includes('hear about us') ||
-        text.includes('previously worked');
-        
-      if (isSectionHeader) {
-        const hasDescendantHeader = node.querySelector('h1, h2, h3, h4, h5, h6, legend, [role="heading"]');
-        return !hasDescendantHeader;
-      }
-      return false;
-    });
-
-    let lastHeadingBeforeEl = null;
-    for (const h of headings) {
-      if (h.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING) {
-        lastHeadingBeforeEl = h;
-      } else {
-        break;
+    const formGroup = el.closest('div, tr, li, [class*="group"], [class*="field"], [class*="widget"], [class*="form-item"]');
+    if (!labelsText && formGroup) {
+      const labeledSibling = formGroup.querySelector('label, [aria-labelledby], [aria-label], [class*="label"]');
+      if (labeledSibling) {
+        labelsText = (labeledSibling.textContent || labeledSibling.getAttribute('aria-label') || '').toLowerCase();
       }
     }
-    if (lastHeadingBeforeEl) {
-      sectionText = (lastHeadingBeforeEl.textContent || '').toLowerCase();
+
+    // Identify Scoped Sections (Experience vs Education vs Personal Info)
+    const sectionScope = el.closest('fieldset, [data-automation-id*="workExperience"], [data-automation-id*="education"], [data-automation-id*="experience"], section, [id*="experience"], [id*="education"], [class*="experience"], [class*="education"]');
+    const scopeText = sectionScope ? (sectionScope.getAttribute('data-automation-id') || sectionScope.getAttribute('id') || sectionScope.className || sectionScope.querySelector('legend, h2, h3, h4')?.textContent || '').toLowerCase() : '';
+
+    const isUnderExperience = scopeText.includes('experience') || scopeText.includes('work') || scopeText.includes('job') || scopeText.includes('employment') || autoId.includes('workexperience') || id.includes('work_experience');
+    const isUnderEducation = scopeText.includes('education') || scopeText.includes('school') || scopeText.includes('academic') || scopeText.includes('study') || autoId.includes('education') || id.includes('education');
+
+    // Consolidated matching metadata tokens
+    const allMeta = `${name} ${id} ${placeholder} ${autoId} ${ariaLabel} ${title} ${labelsText} ${autocomplete}`.toLowerCase();
+
+    // Checkbox / Radio Agreement or Question Handler
+    if (el.type === 'checkbox') {
+      const isConsent = allMeta.includes('agree') || allMeta.includes('consent') || allMeta.includes('terms') || allMeta.includes('privacy') || allMeta.includes('acknowledge');
+      if (isConsent && !el.checked) {
+        el.checked = true;
+        el.dispatchEvent(new Event('click', { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+        count++;
+        return;
+      }
     }
 
-    const isUnderExperience = sectionText.includes('experience') || sectionText.includes('work') || sectionText.includes('job') || sectionText.includes('history');
-    const isUnderEducation = sectionText.includes('education') || sectionText.includes('school') || sectionText.includes('academic') || sectionText.includes('study');
+    if (el.type === 'radio') {
+      const isAuthorizedQuestion = allMeta.includes('authorized') || allMeta.includes('eligibility') || allMeta.includes('legal right') || allMeta.includes('legally authorized');
+      const isSponsorshipQuestion = allMeta.includes('sponsorship') || allMeta.includes('require visa') || allMeta.includes('visa sponsorship');
+      const isPriorEmployeeQuestion = allMeta.includes('previously worked') || allMeta.includes('former employee') || allMeta.includes('prior employee');
 
-    // Page-level generic questions matching
-    const isHearAboutUs = name.includes('hear') || id.includes('hear') || placeholder.includes('hear') || labelsText.includes('hear') || name.includes('source') || id.includes('source') || placeholder.includes('source') || labelsText.includes('source') || name.includes('referral') || id.includes('referral') || labelsText.includes('referral');
-    const isPreviouslyWorked = name.includes('previously worked') || id.includes('previously worked') || labelsText.includes('previously worked') || name.includes('former employee') || id.includes('former employee') || labelsText.includes('former employee') || name.includes('prior employee') || id.includes('prior employee') || labelsText.includes('prior employee') || name.includes('worked at') || id.includes('worked at') || labelsText.includes('worked at') || name.includes('previously employed') || id.includes('previously employed') || labelsText.includes('previously employed') || name.includes('worked for') || id.includes('worked for') || labelsText.includes('worked for');
+      let targetChoice: 'yes' | 'no' | null = null;
+      if (isAuthorizedQuestion) targetChoice = 'yes';
+      if (isSponsorshipQuestion) targetChoice = 'no';
+      if (isPriorEmployeeQuestion) targetChoice = 'no';
 
-    let val = '';
-
-    if (isHearAboutUs) {
-      if (el.tagName === 'SELECT') {
-        const options = Array.from(el.options || []);
-        const indeedOption = options.find((opt: any) => (opt.text || '').toLowerCase().includes('indeed') || (opt.value || '').toLowerCase().includes('indeed')) as any;
-        if (indeedOption) {
-          val = indeedOption.value;
-        }
-      } else {
-        val = 'Indeed';
-      }
-    } else if (isPreviouslyWorked) {
-      if (el.tagName === 'SELECT') {
-        const options = Array.from(el.options || []);
-        const noOption = options.find((opt: any) => {
-          const text = (opt.text || '').trim().toLowerCase();
-          return text === 'no' || text === 'false' || text.startsWith('no ');
-        }) as any;
-        if (noOption) {
-          val = noOption.value;
-        }
-      } else if (el.type === 'radio') {
-        const isNoRadio = el.value.toLowerCase() === 'no' || el.value.toLowerCase() === 'false' || labelsText === 'no' || labelsText === 'false';
-        if (isNoRadio) {
+      if (targetChoice) {
+        const valStr = (el.value || labelsText).trim().toLowerCase();
+        const matchesTarget = (targetChoice === 'yes' && (valStr === 'yes' || valStr === 'true' || valStr === '1')) ||
+                              (targetChoice === 'no' && (valStr === 'no' || valStr === 'false' || valStr === '0'));
+        if (matchesTarget && !el.checked) {
           el.checked = true;
           el.dispatchEvent(new Event('click', { bubbles: true }));
           el.dispatchEvent(new Event('change', { bubbles: true }));
           count++;
+          return;
         }
-        return;
-      } else {
-        val = 'No';
       }
-    } else if (isUnderExperience) {
-      // Work Experience repetir-section
-      const experiences = profile.experience || [];
-      
-      const normText = (name + ' ' + id + ' ' + placeholder + ' ' + labelsText)
-        .replace(/([a-z])([A-Z])/g, '$1 $2')
-        .toLowerCase();
+    }
 
-      const isCompany = normText.includes('company') || normText.includes('employer');
-      const isRole = (normText.includes('title') || normText.includes('role') || normText.includes('position') || normText.includes('job')) && !normText.includes('desc');
-      const isDesc = normText.includes('description') || normText.includes('responsibilities') || el.tagName === 'TEXTAREA';
-      const isLoc = normText.includes('location') || normText.includes('city');
+    let val = '';
+
+    // ==========================================
+    // 1. REPEATING SECTIONS: WORK EXPERIENCE
+    // ==========================================
+    if (isUnderExperience) {
+      const experiences = profile.experience || [];
+      const isCompany = allMeta.includes('company') || allMeta.includes('employer') || autoId.includes('company');
+      const isRole = (allMeta.includes('title') || allMeta.includes('role') || allMeta.includes('position') || allMeta.includes('job title')) && !allMeta.includes('description');
+      const isDesc = allMeta.includes('description') || allMeta.includes('responsibilities') || allMeta.includes('summary') || el.tagName === 'TEXTAREA';
+      const isLoc = (allMeta.includes('location') || allMeta.includes('city')) && !allMeta.includes('school');
       
-      const isDate = normText.includes('date') || normText.includes('month') || normText.includes('year') || /\bfrom\b/i.test(normText) || /\bto\b/i.test(normText);
-      const isStart = /\bstart\b/i.test(normText) || /\bfrom\b/i.test(normText);
-      const isEnd = /\bend\b/i.test(normText) || /\bto\b/i.test(normText) || /\bpresent\b/i.test(normText);
+      const isDate = allMeta.includes('date') || allMeta.includes('month') || allMeta.includes('year') || /\bfrom\b/.test(allMeta) || /\bto\b/.test(allMeta);
+      const isStart = /\bstart\b|\bfrom\b|startdate|fromdate/i.test(allMeta) || autoId.includes('startdate');
+      const isEnd = /\bend\b|\bto\b|enddate|todate/i.test(allMeta) || autoId.includes('enddate');
 
       if (isCompany && experiences[companyCount]) {
         val = experiences[companyCount].company || '';
@@ -224,78 +298,93 @@ export function autofillForm(profile: any, isReRun = false): number {
         val = experiences[expLocationCount].location || '';
         expLocationCount++;
       } else if (isDate) {
-        const isInputText = el.tagName === 'INPUT' && el.getAttribute('role') !== 'combobox';
-        if (isStart) {
-          if (experiences[expStartCount]) {
-            const rawDate = experiences[expStartCount].start_date || '';
-            const parsed = parseDateString(rawDate);
-            if (normText.includes('month')) {
-              val = isInputText ? parsed.monthNum : parsed.month;
-            } else if (normText.includes('year')) {
-              val = parsed.year;
-              expStartCount++;
+        // Disambiguate Month-only, Year-only, and Combined MM/YYYY fields
+        const isExplicitMonthOnly = (
+          autoId.includes('datesectionmonth') ||
+          autoId.includes('month-display') ||
+          id.endsWith('month') || 
+          name.endsWith('month') || 
+          placeholder === 'mm' || 
+          placeholder === 'month' ||
+          ariaLabel === 'month' ||
+          labelsText === 'month'
+        ) && !placeholder.includes('yyyy') && !placeholder.includes('/') && !allMeta.includes('mm/yyyy');
+
+        const isExplicitYearOnly = (
+          autoId.includes('datesectionyear') ||
+          autoId.includes('year-display') ||
+          id.endsWith('year') || 
+          name.endsWith('year') || 
+          placeholder === 'yyyy' || 
+          placeholder === 'year' ||
+          ariaLabel === 'year' ||
+          labelsText === 'year'
+        ) && !placeholder.includes('mm') && !placeholder.includes('/') && !allMeta.includes('mm/yyyy');
+
+        if (isStart && experiences[expStartCount]) {
+          const rawDate = experiences[expStartCount].start_date || '';
+          const parsed = parseDateString(rawDate);
+
+          if (isExplicitMonthOnly) {
+            val = el.tagName === 'SELECT' ? parsed.month : parsed.monthNum;
+          } else if (isExplicitYearOnly) {
+            val = parsed.year;
+            expStartCount++;
+          } else {
+            // Combined Date Input (e.g. Workday MM/YYYY or HTML5 month/date)
+            if (el.type === 'month') {
+              val = parsed.formattedYYYYMM;
+            } else if (el.type === 'date' || placeholder.includes('dd') || placeholder.includes('mm/dd/yyyy')) {
+              val = parsed.formattedMMDDYYYY;
             } else {
-              val = rawDate;
-              expStartCount++;
+              val = parsed.formattedMMYYYY;
+            }
+            expStartCount++;
+          }
+        } else if (isEnd && experiences[expEndCount]) {
+          const rawDate = experiences[expEndCount].end_date || '';
+          const parsed = parseDateString(rawDate);
+
+          // Handle "Currently Working Here" checkbox
+          if (parsed.isPresent) {
+            const currCheckbox = formGroup?.querySelector('input[type="checkbox"]') || 
+                                 sectionScope?.querySelector('input[type="checkbox"][data-automation-id*="current"], input[type="checkbox"][id*="current"], input[type="checkbox"][name*="current"]');
+            if (currCheckbox && !(currCheckbox as HTMLInputElement).checked) {
+              (currCheckbox as HTMLInputElement).checked = true;
+              currCheckbox.dispatchEvent(new Event('click', { bubbles: true }));
+              currCheckbox.dispatchEvent(new Event('change', { bubbles: true }));
             }
           }
-        } else if (isEnd) {
-          if (experiences[expEndCount]) {
-            const rawDate = experiences[expEndCount].end_date || '';
-            const parsed = parseDateString(rawDate);
-            if (normText.includes('month')) {
-              val = isInputText ? parsed.monthNum : parsed.month;
-            } else if (normText.includes('year')) {
-              val = parsed.year;
-              expEndCount++;
+
+          if (isExplicitMonthOnly) {
+            val = el.tagName === 'SELECT' ? parsed.month : parsed.monthNum;
+          } else if (isExplicitYearOnly) {
+            val = parsed.year;
+            expEndCount++;
+          } else {
+            // Combined Date Input
+            if (el.type === 'month') {
+              val = parsed.formattedYYYYMM;
+            } else if (el.type === 'date' || placeholder.includes('dd') || placeholder.includes('mm/dd/yyyy')) {
+              val = parsed.formattedMMDDYYYY;
             } else {
-              val = rawDate;
-              expEndCount++;
+              val = parsed.formattedMMYYYY;
             }
-          }
-        } else {
-          if (expStartCount === expEndCount && experiences[expStartCount]) {
-            const rawDate = experiences[expStartCount].start_date || '';
-            const parsed = parseDateString(rawDate);
-            if (normText.includes('month')) {
-              val = isInputText ? parsed.monthNum : parsed.month;
-            } else if (normText.includes('year')) {
-              val = parsed.year;
-              expStartCount++;
-            } else {
-              val = rawDate;
-              expStartCount++;
-            }
-          } else if (experiences[expEndCount]) {
-            const rawDate = experiences[expEndCount].end_date || '';
-            const parsed = parseDateString(rawDate);
-            if (normText.includes('month')) {
-              val = isInputText ? parsed.monthNum : parsed.month;
-            } else if (normText.includes('year')) {
-              val = parsed.year;
-              expEndCount++;
-            } else {
-              val = rawDate;
-              expEndCount++;
-            }
+            expEndCount++;
           }
         }
       }
-    } else if (isUnderEducation) {
-      // Education repetir-section
+    }
+    // ==========================================
+    // 2. REPEATING SECTIONS: EDUCATION
+    // ==========================================
+    else if (isUnderEducation) {
       const educations = profile.education || [];
-
-      const normText = (name + ' ' + id + ' ' + placeholder + ' ' + labelsText)
-        .replace(/([a-z])([A-Z])/g, '$1 $2')
-        .toLowerCase();
-
-      const isSchool = normText.includes('school') || normText.includes('university') || normText.includes('college') || normText.includes('institution');
-      const isDegree = normText.includes('degree') && !normText.includes('study') && !normText.includes('major');
-      const isFieldOfStudy = normText.includes('study') || normText.includes('major') || normText.includes('program');
-      const isLoc = normText.includes('location') || normText.includes('city') || normText.includes('town');
-      const isDate = normText.includes('date') || normText.includes('year') || /\bfrom\b/i.test(normText) || /\bto\b/i.test(normText);
-      const isStart = /\bstart\b/i.test(normText) || /\bfrom\b/i.test(normText);
-      const isEnd = /\bend\b/i.test(normText) || /\bto\b/i.test(normText) || /\bpresent\b/i.test(normText) || /\bgrad\b/i.test(normText) || /\bgraduation\b/i.test(normText);
+      const isSchool = allMeta.includes('school') || allMeta.includes('university') || allMeta.includes('college') || allMeta.includes('institution') || autoId.includes('school');
+      const isDegree = (allMeta.includes('degree') || autoId.includes('degree')) && !allMeta.includes('study') && !allMeta.includes('major');
+      const isFieldOfStudy = allMeta.includes('study') || allMeta.includes('major') || allMeta.includes('discipline') || allMeta.includes('program') || autoId.includes('fieldofstudy');
+      const isLoc = (allMeta.includes('location') || allMeta.includes('city')) && !allMeta.includes('company');
+      const isDate = allMeta.includes('date') || allMeta.includes('year') || allMeta.includes('grad') || allMeta.includes('month');
 
       if (isSchool && educations[schoolCount]) {
         val = educations[schoolCount].school || '';
@@ -310,224 +399,196 @@ export function autofillForm(profile: any, isReRun = false): number {
         val = educations[eduLocationCount].location || '';
         eduLocationCount++;
       } else if (isDate) {
-      const isInputText = el.tagName === 'INPUT' && el.getAttribute('role') !== 'combobox';
-      if (isStart) {
-        if (educations[eduStartCount]) {
+        const isStart = /\bstart\b|\bfrom\b/i.test(allMeta);
+        const isExplicitMonth = (
+          autoId.includes('datesectionmonth') ||
+          autoId.includes('month-display') ||
+          id.endsWith('month') || 
+          name.endsWith('month') || 
+          placeholder === 'mm' || 
+          placeholder === 'month'
+        ) && !placeholder.includes('yyyy') && !placeholder.includes('/');
+
+        if (isStart && educations[eduStartCount]) {
           const rawDate = educations[eduStartCount].start_year || '';
           const parsed = parseDateString(rawDate);
-          if (normText.includes('month')) {
-            val = isInputText ? parsed.monthNum : parsed.month;
-          } else if (normText.includes('year')) {
-            val = parsed.year;
+          if (isExplicitMonth) {
+            val = el.tagName === 'SELECT' ? parsed.month : parsed.monthNum;
+          } else if (allMeta.includes('mm/yyyy') || placeholder.includes('yyyy')) {
+            val = parsed.formattedMMYYYY || parsed.year;
             eduStartCount++;
           } else {
-            val = rawDate;
-            eduStartCount++;
-          }
-        }
-      } else if (isEnd) {
-        if (educations[eduEndCount]) {
-          const rawDate = educations[eduEndCount].end_year || '';
-          const parsed = parseDateString(rawDate);
-          if (normText.includes('month')) {
-            val = isInputText ? parsed.monthNum : parsed.month;
-          } else if (normText.includes('year')) {
-            val = parsed.year;
-            eduEndCount++;
-          } else {
-            val = rawDate;
-            eduEndCount++;
-          }
-        }
-      } else {
-        if (eduStartCount === eduEndCount && educations[eduStartCount]) {
-          const rawDate = educations[eduStartCount].start_year || '';
-          const parsed = parseDateString(rawDate);
-          if (normText.includes('month')) {
-            val = isInputText ? parsed.monthNum : parsed.month;
-          } else if (normText.includes('year')) {
-            val = parsed.year;
-            eduStartCount++;
-          } else {
-            val = rawDate;
+            val = parsed.year || rawDate;
             eduStartCount++;
           }
         } else if (educations[eduEndCount]) {
           const rawDate = educations[eduEndCount].end_year || '';
           const parsed = parseDateString(rawDate);
-          if (normText.includes('month')) {
-            val = isInputText ? parsed.monthNum : parsed.month;
-          } else if (normText.includes('year')) {
-            val = parsed.year;
+          if (isExplicitMonth) {
+            val = el.tagName === 'SELECT' ? parsed.month : parsed.monthNum;
+          } else if (allMeta.includes('mm/yyyy') || placeholder.includes('yyyy')) {
+            val = parsed.formattedMMYYYY || parsed.year;
             eduEndCount++;
           } else {
-            val = rawDate;
+            val = parsed.year || rawDate;
             eduEndCount++;
           }
         }
       }
-      }
-    } else {
-      // Personal details
-      const isEmail = name.includes('email') || id.includes('email') || autocomplete.includes('email') || el.type === 'email' || placeholder.includes('email') || ariaLabel.includes('email') || title.includes('email') || labelsText.includes('email');
-      const isPhone = name.includes('phone') || id.includes('phone') || name.includes('mobile') || id.includes('mobile') || el.type === 'tel' || placeholder.includes('phone') || placeholder.includes('mobile') || ariaLabel.includes('phone') || ariaLabel.includes('mobile') || title.includes('phone') || title.includes('mobile') || labelsText.includes('phone') || labelsText.includes('mobile');
+    }
+    // ==========================================
+    // 3. CANDIDATE PROFILE CORE FIELDS
+    // ==========================================
+    else {
+      const isEmail = allMeta.includes('email') || autocomplete.includes('email') || autoId.includes('email') || el.type === 'email';
+      const isPhone = (allMeta.includes('phone') || allMeta.includes('mobile') || allMeta.includes('tel') || autocomplete.includes('tel') || autoId.includes('phone')) && !allMeta.includes('device');
       
-      const isFirstName = name.includes('firstname') || name.includes('first_name') || name.includes('fname') || name.includes('first') || name === 'f_name' || id.includes('firstname') || id.includes('first_name') || id.includes('fname') || id.includes('first') || placeholder.includes('first name') || placeholder.includes('given name') || autocomplete.includes('given-name') || ariaLabel.includes('first name') || ariaLabel.includes('given name') || title.includes('first name') || labelsText.includes('first name') || labelsText.includes('given name');
-      const isMiddleName = name.includes('middlename') || name.includes('middle_name') || name.includes('mname') || name.includes('middle') || id.includes('middlename') || id.includes('middle_name') || id.includes('mname') || placeholder.includes('middle name') || autocomplete.includes('additional-name') || ariaLabel.includes('middle name') || title.includes('middle name') || labelsText.includes('middle name');
-      const isLastName = name.includes('lastname') || name.includes('last_name') || name.includes('lname') || name.includes('last') || name === 'l_name' || id.includes('lastname') || id.includes('last_name') || id.includes('lname') || id.includes('last') || placeholder.includes('last name') || placeholder.includes('family name') || placeholder.includes('surname') || autocomplete.includes('family-name') || ariaLabel.includes('last name') || ariaLabel.includes('family name') || ariaLabel.includes('surname') || title.includes('last name') || title.includes('family name') || title.includes('surname') || labelsText.includes('last name') || labelsText.includes('family name') || labelsText.includes('surname');
+      const isFirstName = (allMeta.includes('first') && allMeta.includes('name')) || allMeta.includes('fname') || allMeta.includes('givenname') || autocomplete.includes('given-name') || autoId.includes('firstname') || autoId.includes('legalnamesection_firstname') || id === 'first_name' || name === 'first_name';
+      const isMiddleName = (allMeta.includes('middle') && allMeta.includes('name')) || allMeta.includes('mname') || autocomplete.includes('additional-name') || autoId.includes('middlename');
+      const isLastName = (allMeta.includes('last') && allMeta.includes('name')) || (allMeta.includes('sur') && allMeta.includes('name')) || (allMeta.includes('family') && allMeta.includes('name')) || allMeta.includes('lname') || autocomplete.includes('family-name') || autoId.includes('lastname') || autoId.includes('legalnamesection_lastname') || id === 'last_name' || name === 'last_name';
       
-      const isStreetAddress = name.includes('street') || name.includes('address') || name.includes('addr') || id.includes('street') || id.includes('address') || id.includes('addr') || placeholder.includes('street') || placeholder.includes('address') || placeholder.includes('addr') || autocomplete.includes('address-line') || autocomplete.includes('street-address') || ariaLabel.includes('street') || ariaLabel.includes('address') || title.includes('street') || title.includes('address') || labelsText.includes('street') || labelsText.includes('address');
-      const isCity = name.includes('city') || id.includes('city') || placeholder.includes('city') || placeholder.includes('town') || autocomplete.includes('address-level2') || name.includes('town') || id.includes('town') || ariaLabel.includes('city') || ariaLabel.includes('town') || title.includes('city') || labelsText.includes('city') || labelsText.includes('town');
-      const isState = name.includes('state') || id.includes('state') || name.includes('province') || id.includes('province') || placeholder.includes('state') || placeholder.includes('province') || autocomplete.includes('address-level1') || ariaLabel.includes('state') || ariaLabel.includes('province') || title.includes('state') || title.includes('province') || labelsText.includes('state') || labelsText.includes('province');
-      const isPinCode = name.includes('pincode') || name.includes('zip') || name.includes('postal') || id.includes('pincode') || id.includes('zip') || id.includes('postal') || placeholder.includes('pin code') || placeholder.includes('zip') || placeholder.includes('postal') || autocomplete.includes('postal-code') || ariaLabel.includes('pincode') || ariaLabel.includes('zip') || ariaLabel.includes('postal') || title.includes('pincode') || title.includes('zip') || title.includes('postal') || labelsText.includes('pincode') || labelsText.includes('zip') || labelsText.includes('postal');
+      const isFullName = (allMeta.includes('full') && allMeta.includes('name')) || (allMeta.includes('name') && !isFirstName && !isMiddleName && !isLastName && !allMeta.includes('company') && !allMeta.includes('school') && !allMeta.includes('user') && !allMeta.includes('file'));
+
+      const isStreetAddress = (allMeta.includes('street') || allMeta.includes('address line 1') || allMeta.includes('address1') || allMeta.includes('addressline1') || autoId.includes('addressline1') || autocomplete.includes('address-line1')) && !allMeta.includes('email');
+      const isCity = allMeta.includes('city') || allMeta.includes('town') || allMeta.includes('municipality') || autocomplete.includes('address-level2') || autoId.includes('city');
+      const isState = (allMeta.includes('state') || allMeta.includes('province') || allMeta.includes('region') || autocomplete.includes('address-level1') || autoId.includes('state') || autoId.includes('province')) && !allMeta.includes('united states');
+      const isPinCode = allMeta.includes('pincode') || allMeta.includes('zip') || allMeta.includes('postal') || autocomplete.includes('postal-code') || autoId.includes('postalcode') || autoId.includes('zip');
       
-      const isLinkedIn = name.includes('linkedin') || id.includes('linkedin') || placeholder.includes('linkedin');
-      const isPortfolio = name.includes('portfolio') || id.includes('portfolio') || name.includes('website') || id.includes('website') || placeholder.includes('portfolio') || placeholder.includes('website');
-      
-      const isFullName = name.includes('fullname') || name.includes('full_name') || id.includes('fullname') || id.includes('full_name') || placeholder.includes('full name') || ariaLabel.includes('full name') || title.includes('full name') || labelsText.includes('full name') || ( (name.includes('name') || id.includes('name') || placeholder.includes('name') || labelsText.includes('name')) && !isFirstName && !isMiddleName && !isLastName && !name.includes('company') && !name.includes('university') && !name.includes('school') && !name.includes('username') && !name.includes('user') && !name.includes('login') && !id.includes('username') && !id.includes('user') && !id.includes('login') );
-      const isLocation = name.includes('location') || id.includes('location') || placeholder.includes('location');
-      const isTitle = name.includes('title') || id.includes('title') || placeholder.includes('title') || name.includes('headline') || id.includes('headline');
+      const isLinkedIn = allMeta.includes('linkedin') || allMeta.includes('linked in') || autoId.includes('linkedin');
+      const isPortfolio = allMeta.includes('portfolio') || allMeta.includes('website') || allMeta.includes('github') || allMeta.includes('url') || autoId.includes('portfolio');
+      const isLocation = (allMeta.includes('location') || allMeta.includes('address')) && !isStreetAddress && !isCity && !isState && !isPinCode && !isEmail;
+      const isTitle = allMeta.includes('title') || allMeta.includes('headline') || allMeta.includes('subtitle') || autoId.includes('title');
+
+      const isHearAboutUs = allMeta.includes('hear') || allMeta.includes('referral') || allMeta.includes('source') || autoId.includes('source');
+      const isPreviouslyWorked = allMeta.includes('previously worked') || allMeta.includes('former employee') || allMeta.includes('prior employee') || allMeta.includes('worked for') || autoId.includes('previouslyworked');
 
       if (isEmail) {
         val = profile.email || '';
       } else if (isPhone) {
-        val = profile.phone || '';
+        val = allMeta.includes('format') ? formattedUsPhone : (profile.phone || usPhone10);
       } else if (isFirstName) {
-        val = profile.first_name || '';
+        val = firstName;
       } else if (isMiddleName) {
-        val = profile.middle_name || '';
+        val = middleName;
       } else if (isLastName) {
-        val = profile.last_name || '';
+        val = lastName;
       } else if (isFullName) {
-        val = profile.full_name || '';
+        val = fullName;
       } else if (isLinkedIn) {
-        val = profile.linkedin_url || '';
+        val = profile.linkedin_url || profile.linkedin || '';
       } else if (isPortfolio) {
-        val = profile.portfolio_url || '';
+        val = profile.portfolio_url || profile.portfolio || profile.website || '';
       } else if (isStreetAddress) {
-        val = profile.street_address || '';
+        val = streetAddress || profile.street_address || profile.location || '';
       } else if (isCity) {
-        val = profile.city || '';
+        val = city;
       } else if (isState) {
-        val = profile.state || '';
+        val = state;
       } else if (isPinCode) {
-        val = profile.pin_code || '';
+        val = pinCode;
       } else if (isLocation) {
-        val = profile.location || '';
+        val = profile.location || streetAddress || [city, state].filter(Boolean).join(', ');
       } else if (isTitle) {
-        val = profile.professional_subtitle || '';
+        val = profile.professional_subtitle || profile.title || '';
+      } else if (isHearAboutUs) {
+        val = 'Indeed';
+      } else if (isPreviouslyWorked) {
+        val = 'No';
       }
     }
 
-    if (val && val.trim()) {
+    // Apply populated value to element safely
+    if (val && String(val).trim()) {
+      const finalVal = String(val).trim();
       el.focus();
       
       const isCombobox = el.getAttribute('role') === 'combobox' || 
                          el.hasAttribute('aria-haspopup') || 
                          el.tagName === 'BUTTON' || 
-                         el.closest('[role="combobox"], [data-automation-id="decorationSelectWidget"]');
+                         el.closest('[role="combobox"], [data-automation-id*="SelectWidget"]');
       
       if (el.tagName === 'SELECT') {
-        el.value = val;
+        const options = Array.from((el as HTMLSelectElement).options);
+        const normVal = finalVal.toLowerCase();
+        
+        // Match option by text, value, or state abbreviation
+        let matchingOpt = options.find(opt => {
+          const optText = (opt.text || '').trim().toLowerCase();
+          const optVal = (opt.value || '').trim().toLowerCase();
+          return optText === normVal || optVal === normVal || optText.includes(normVal) || (normVal.length > 3 && optText.startsWith(normVal.slice(0, 3)));
+        });
+
+        if (matchingOpt) {
+          (el as HTMLSelectElement).value = matchingOpt.value;
+        } else {
+          (el as HTMLSelectElement).value = finalVal;
+        }
+        
         el.dispatchEvent(new Event('change', { bubbles: true }));
+        el.dispatchEvent(new Event('input', { bubbles: true }));
       } else if (isCombobox) {
-        // Workday Custom Combobox/Select handling
         const trigger = el.tagName === 'INPUT' || el.tagName === 'BUTTON' ? el : (el.querySelector('input:not([type="hidden"]), button') || el);
         
         if (trigger.tagName === 'INPUT') {
-          const nativeSetter = Object.getOwnPropertyDescriptor(
-            window.HTMLInputElement.prototype,
-            'value'
-          )?.set;
-          if (nativeSetter) {
-            nativeSetter.call(trigger, val);
-          } else {
-            trigger.value = val;
-          }
+          const nativeSetter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
+          if (nativeSetter) nativeSetter.call(trigger, finalVal);
+          else trigger.value = finalVal;
           trigger.dispatchEvent(new Event('input', { bubbles: true }));
           trigger.dispatchEvent(new Event('change', { bubbles: true }));
         }
         
         trigger.click();
-        trigger.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
-        trigger.dispatchEvent(new MouseEvent('click', { bubbles: true }));
         
         let attempts = 0;
-         const selectOption = () => {
-           const options = Array.from(document.querySelectorAll('[role="option"], .menu-item, [id*="option"]'));
-           let targetOption = options.find((opt: any) => {
-             const text = (opt.textContent || '').trim().toLowerCase();
-             return text.includes(val.toLowerCase()) || val.toLowerCase().includes(text);
-           }) as any;
-           
-           if (!targetOption && options.length > 0) {
-             targetOption = options[0];
-           }
-           
-           if (targetOption) {
-             targetOption.click();
-             targetOption.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-           } else if (attempts < 5) {
-             attempts++;
-             setTimeout(selectOption, 100);
-           } else {
-             trigger.click();
-           }
-         };
-         setTimeout(selectOption, 100);
+        const selectOption = () => {
+          const options = Array.from(document.querySelectorAll('[role="option"], .menu-item, [id*="option"], [data-automation-id*="promptOption"]'));
+          const normVal = finalVal.toLowerCase();
+          let targetOption = options.find((opt: any) => {
+            const text = (opt.textContent || '').trim().toLowerCase();
+            return text === normVal || text.includes(normVal) || normVal.includes(text);
+          }) as any;
+          
+          if (!targetOption && options.length > 0) {
+            targetOption = options[0];
+          }
+          
+          if (targetOption) {
+            targetOption.click();
+            targetOption.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+          } else if (attempts < 4) {
+            attempts++;
+            setTimeout(selectOption, 100);
+          }
+        };
+        setTimeout(selectOption, 100);
       } else {
-        // Trigger React/Angular synthetic change trackers
-        const nativeSetter = Object.getOwnPropertyDescriptor(
-          el.tagName === 'TEXTAREA' ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype,
-          'value'
-        )?.set;
+        // Standard Text / Textarea input
+        const proto = el.tagName === 'TEXTAREA' ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype;
+        const nativeSetter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
         
         if (nativeSetter) {
-          nativeSetter.call(el, val);
+          nativeSetter.call(el, finalVal);
         } else {
-          el.value = val;
+          el.value = finalVal;
+        }
+
+        // Framework synthetic trackers (React 16+, Vue, Angular)
+        const tracker = (el as any)._valueTracker;
+        if (tracker) {
+          tracker.setValue(finalVal);
         }
         
         el.dispatchEvent(new Event('input', { bubbles: true }));
         el.dispatchEvent(new Event('change', { bubbles: true }));
+        if (typeof InputEvent !== 'undefined') {
+          el.dispatchEvent(new InputEvent('input', { bubbles: true, cancelable: true, inputType: 'insertText', data: finalVal }));
+        }
       }
       
       el.blur();
       count++;
     }
   });
-
-  // Setup MutationObserver to watch for dynamic step additions safely
-  if (!(window as any).__clipstaffObserver) {
-    let debounceTimeout: any = null;
-    const observer = new MutationObserver((mutations) => {
-      let hasNewElements = false;
-      for (const m of mutations) {
-        for (const node of Array.from(m.addedNodes)) {
-          if (node.nodeType === Node.ELEMENT_NODE) {
-            const addedEl = node as HTMLElement;
-            if (addedEl.id !== 'clipstaff-sidebar-host' && !addedEl.closest('#clipstaff-sidebar-host')) {
-              hasNewElements = true;
-              break;
-            }
-          }
-        }
-        if (hasNewElements) break;
-      }
-
-      if (hasNewElements) {
-        if (debounceTimeout) clearTimeout(debounceTimeout);
-        debounceTimeout = setTimeout(() => {
-          observer.disconnect();
-          autofillForm(profile, true);
-          observer.observe(document.documentElement, { childList: true, subtree: true });
-        }, 500);
-      }
-    });
-
-    (window as any).__clipstaffObserver = observer;
-    observer.observe(document.documentElement, { childList: true, subtree: true });
-  }
 
   return count;
 }

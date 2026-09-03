@@ -3,8 +3,9 @@
  * Handles extension-level events, side-panel orchestration, and background triggers.
  */
 
-import { addJob, getPendingJobs, markJobsAsSynced, markJobsAsError, markJobsAsFailed, mergeExternalJobs } from './lib/db';
+import { addJob, getPendingJobs, markJobsAsSynced, markJobsAsError, markJobsAsFailed, mergeExternalJobs, markJobAppliedByUrl } from './lib/db';
 import { extractCompanyFromUrl, extractRoleFromUrl, getJobId, isValidJobUrl } from './lib/extractor';
+import { checkCompanyExclusion } from './lib/exclusionHelper';
 import { Job, Profile } from './types';
 
 console.log('ClipStaff background active');
@@ -253,6 +254,66 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return true;
   }
 
+  if (message.type === 'MARK_JOB_APPLIED_FROM_PAGE') {
+    const url = message.url || (_sender.tab ? _sender.tab.url : '');
+    if (url) {
+      markJobAppliedByUrl(url, message.company, message.role)
+        .then((job) => {
+          chrome.storage.local.set({ 
+            lastBackgroundStatus: `Marked as applied: ${job.role} at ${job.company}`
+          });
+          chrome.runtime.sendMessage({ type: 'JOB_DATABASE_CHANGED' }).catch(() => {});
+          if (_sender.tab?.id) {
+            chrome.tabs.sendMessage(_sender.tab.id, {
+              type: 'SHOW_PAGE_TOAST',
+              message: `Marked as Applied: ${job.role} at ${job.company}!`,
+              isError: false
+            }).catch(() => {});
+          }
+          sendResponse({ success: true, job });
+        })
+        .catch((err) => {
+          sendResponse({ success: false, error: err.message });
+        });
+    } else {
+      sendResponse({ success: false, error: 'No URL provided' });
+    }
+    return true;
+  }
+
+  if (message.type === 'TEST_GOOGLE_SCRIPT_CONNECTION') {
+    const start = Date.now();
+    const url = message.url;
+    if (!url || !isValidGoogleScriptUrl(url)) {
+      sendResponse({ success: false, error: 'Invalid Google Apps Script URL. Must start with https://script.google.com' });
+      return true;
+    }
+
+    fetchWithTimeout(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'ping', test: true }),
+      redirect: 'follow'
+    }, 6000)
+      .then(async (res) => {
+        const latency = Date.now() - start;
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+        }
+        let data: any = {};
+        try {
+          data = await res.json();
+        } catch {
+          data = { status: 'ok' };
+        }
+        sendResponse({ success: true, latency, data });
+      })
+      .catch((err) => {
+        sendResponse({ success: false, error: err.message || 'Connection timed out or blocked by CORS' });
+      });
+    return true;
+  }
+
   if (message.type === 'GET_SYNC_STATE') {
     chrome.storage.local.get(['isSyncInProgress', 'lastSyncAttempt', 'pendingSyncCount', 'lastSheetVersion'], (res) => {
       sendResponse(res);
@@ -327,8 +388,28 @@ async function handleSaveJob(tab: chrome.tabs.Tab, urlOverride?: string) {
 
     const company = extractCompanyFromUrl(url);
     const role = extractRoleFromUrl(url);
+
+    // 3b. Check Profile Experience & Exclusion Rules
+    const { activeProfile, candidateExclusions, globalExclusions } = await getPersistedStore();
+    const exclusionCheck = checkCompanyExclusion({
+      url,
+      companyName: company,
+      profile: activeProfile,
+      candidateExclusions,
+      globalExclusions
+    });
+
+    if (exclusionCheck.isExcluded) {
+      console.warn('[Background SW] Exclusion triggered, aborting save:', exclusionCheck);
+      const warnMsg = exclusionCheck.warningMessage || `⚠️ Exclusion: "${exclusionCheck.matchedCompany}" is in your experience list. Do not apply!`;
+      chrome.storage.local.set({ lastBackgroundError: warnMsg });
+      showFeedback(targetTab.id, warnMsg, true);
+      return; // Do NOT save the URL
+    }
+
     const id = getJobId(url);
     const dateAdded = new Date().toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
+    const now = Date.now();
 
     const jobItem: Job = {
       id,
@@ -336,7 +417,9 @@ async function handleSaveJob(tab: chrome.tabs.Tab, urlOverride?: string) {
       role,
       url,
       dateAdded,
-      status: 'not_applied'
+      status: 'not_applied',
+      createdAt: now,
+      updatedAt: now
     };
 
     // 4. Save to database
@@ -387,28 +470,46 @@ interface PersistedState {
   state?: {
     googleWebAppUrl?: string;
     activeProfile?: Profile | null;
+    candidateExclusions?: Record<string, string[]>;
+    globalExclusions?: string[];
   }
 }
 
-async function getPersistedStore(): Promise<{ googleWebAppUrl: string; activeProfile: Profile | null }> {
+async function getPersistedStore(): Promise<{ 
+  googleWebAppUrl: string; 
+  activeProfile: Profile | null;
+  candidateExclusions: Record<string, string[]>;
+  globalExclusions: string[];
+}> {
   return new Promise((resolve) => {
-    chrome.storage.local.get(['clipstaff-storage'], (result) => {
+    chrome.storage.local.get(['clipstaff-storage', 'clipstaff_active_profile'], (result) => {
       const dataStr = result['clipstaff-storage'];
+      let activeProf: Profile | null = result['clipstaff_active_profile'] || null;
+      let webAppUrl = '';
+      let candExclusions: Record<string, string[]> = {};
+      let globExclusions: string[] = [];
+
       if (dataStr) {
         try {
           const parsed = JSON.parse(dataStr) as PersistedState;
           if (parsed && parsed.state) {
-            resolve({
-              googleWebAppUrl: parsed.state.googleWebAppUrl || '',
-              activeProfile: parsed.state.activeProfile || null
-            });
-            return;
+            webAppUrl = parsed.state.googleWebAppUrl || '';
+            if (parsed.state.activeProfile) {
+              activeProf = parsed.state.activeProfile;
+            }
+            candExclusions = parsed.state.candidateExclusions || {};
+            globExclusions = parsed.state.globalExclusions || [];
           }
         } catch (e) {
           console.error('[SW] Failed to parse clipstaff-storage:', e);
         }
       }
-      resolve({ googleWebAppUrl: '', activeProfile: null });
+      resolve({ 
+        googleWebAppUrl: webAppUrl, 
+        activeProfile: activeProf,
+        candidateExclusions: candExclusions,
+        globalExclusions: globExclusions
+      });
     });
   });
 }

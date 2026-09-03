@@ -66,8 +66,14 @@ export const getSpreadsheetExportUrl = (url: string): string | null => {
 
 export function escapeCSVCell(val: string): string {
   if (val === undefined || val === null) return '';
-  const str = String(val);
-  if (str.includes('"') || str.includes(',') || str.includes('\n') || str.includes('\r')) {
+  let str = String(val);
+  
+  // Prevent CSV formula injection in spreadsheet software
+  if (/^[=+\-@\t\r]/.test(str)) {
+    str = "'" + str;
+  }
+  
+  if (str.includes('"') || str.includes(',') || str.includes('\n') || str.includes('\r') || str.startsWith("'")) {
     return `"${str.replace(/"/g, '""')}"`;
   }
   return str;
@@ -285,26 +291,71 @@ export const getSpreadsheetXlsxExportUrl = (url: string): string | null => {
   return `https://docs.google.com/spreadsheets/d/${id}/export?format=xlsx`;
 };
 
-// Convert an ExcelJS Worksheet to string[][] (same format as parseCSV output)
+// Parse an Excel file (XLSX, XLS, CSV) into sheets and rows using SheetJS
+export async function parseExcelWorkbookToSheets(data: ArrayBuffer | ArrayBufferView | string): Promise<{ name: string; rows: string[][] }[]> {
+  const XLSX = await import('xlsx');
+  let workbook: any;
+
+  if (typeof data === 'string') {
+    // If base64 or binary string
+    workbook = XLSX.read(data, { type: 'binary', cellDates: true });
+  } else if (ArrayBuffer.isView(data)) {
+    workbook = XLSX.read(new Uint8Array(data.buffer, data.byteOffset, data.byteLength), { type: 'array', cellDates: true });
+  } else {
+    // ArrayBuffer
+    workbook = XLSX.read(new Uint8Array(data), { type: 'array', cellDates: true });
+  }
+
+  const result: { name: string; rows: string[][] }[] = [];
+
+  for (const sheetName of workbook.SheetNames) {
+    if (sheetName === '__meta__') continue;
+    const worksheet = workbook.Sheets[sheetName];
+    if (!worksheet) continue;
+
+    // Convert sheet to 2D array of string values
+    const rawRows = XLSX.utils.sheet_to_json(worksheet, {
+      header: 1,
+      defval: '',
+      raw: false,
+      dateNF: 'yyyy-mm-dd'
+    }) as any[][];
+
+    const rows: string[][] = rawRows
+      .map(row => (Array.isArray(row) ? row.map(c => (c !== null && c !== undefined ? String(c).trim() : '')) : []))
+      .filter(row => row.some(c => c.length > 0));
+
+    if (rows.length > 0) {
+      result.push({ name: sheetName, rows });
+    }
+  }
+
+  return result;
+}
+
+// Convert an ExcelJS or custom Worksheet to string[][] (same format as parseCSV output)
 export function worksheetToRows(sheet: any): string[][] {
+  if (!sheet) return [];
   const rows: string[][] = [];
-  sheet.eachRow({ includeEmpty: false }, (row: any) => {
-    const cells: string[] = [];
-    row.eachCell({ includeEmpty: true }, (cell: any, colNumber: number) => {
-      let val = '';
-      if (cell.value !== null && cell.value !== undefined) {
-        if (typeof cell.value === 'object' && 'text' in cell.value) {
-          val = (cell.value as any).text?.toString() || '';
-        } else if (typeof cell.value === 'object' && 'hyperlink' in cell.value) {
-          val = (cell.value as any).hyperlink?.toString() || '';
-        } else {
-          val = cell.value.toString();
+  if (typeof sheet.eachRow === 'function') {
+    sheet.eachRow({ includeEmpty: false }, (row: any) => {
+      const cells: string[] = [];
+      row.eachCell({ includeEmpty: true }, (cell: any, colNumber: number) => {
+        let val = '';
+        if (cell.value !== null && cell.value !== undefined) {
+          if (typeof cell.value === 'object' && 'text' in cell.value) {
+            val = (cell.value as any).text?.toString() || '';
+          } else if (typeof cell.value === 'object' && 'hyperlink' in cell.value) {
+            val = (cell.value as any).hyperlink?.toString() || '';
+          } else {
+            val = cell.value.toString();
+          }
         }
-      }
-      cells[colNumber - 1] = val;
+        cells[colNumber - 1] = val.trim();
+      });
+      rows.push(cells);
     });
-    rows.push(cells);
-  });
+  }
   return rows;
 }
 
@@ -315,13 +366,39 @@ export function parseRowsToJobs(rows: string[][], existingJobs?: Job[]): Job[] {
   const headers = rows[0].map(h => (h || '').toLowerCase().trim());
 
   // Dynamic Column Detection
-  let urlIdx = headers.findIndex(h => h.includes('link') || h.includes('url') || h.includes('apply') || h.includes('website') || h.includes('href'));
-  const companyIdx = headers.findIndex((h, idx) => idx !== urlIdx && (h.includes('company') || h.includes('employer') || h.includes('org') || h.includes('firm') || h.includes('name')));
-  const roleIdx = headers.findIndex((h, idx) => idx !== urlIdx && idx !== companyIdx && (h.includes('role') || h.includes('title') || h.includes('job') || h.includes('position') || h.includes('vacancy') || h.includes('designation')));
-  const dateIdx = headers.findIndex((h, idx) => idx !== urlIdx && idx !== companyIdx && idx !== roleIdx && (h.includes('date') || h.includes('added') || h.includes('posted') || h.includes('time') || h.includes('day')));
-  const statusIdx = headers.findIndex((h, idx) => idx !== urlIdx && idx !== companyIdx && idx !== roleIdx && idx !== dateIdx && (h.includes('status')));
+  let urlIdx = headers.findIndex(h => 
+    h === 'url' || h === 'link' || h === 'job url' || h === 'job link' || h === 'apply link' ||
+    h.includes('link') || h.includes('url') || h.includes('apply') || h.includes('website') || h.includes('href')
+  );
+  
+  const companyIdx = headers.findIndex((h, idx) => 
+    idx !== urlIdx && (
+      h === 'company' || h === 'company name' || h === 'employer' || h === 'org' || h === 'organization' ||
+      h.includes('company') || h.includes('employer') || h.includes('org') || h.includes('firm')
+    )
+  );
+  
+  const roleIdx = headers.findIndex((h, idx) => 
+    idx !== urlIdx && idx !== companyIdx && (
+      h === 'role' || h === 'role title' || h === 'job title' || h === 'position' || h === 'title' ||
+      h.includes('role') || h.includes('title') || h.includes('job') || h.includes('position') || h.includes('vacancy') || h.includes('designation')
+    )
+  );
+  
+  const dateIdx = headers.findIndex((h, idx) => 
+    idx !== urlIdx && idx !== companyIdx && idx !== roleIdx && (
+      h === 'date added' || h === 'date' || h === 'added on' || h === 'applied date' ||
+      h.includes('date') || h.includes('added') || h.includes('posted') || h.includes('time') || h.includes('day')
+    )
+  );
+  
+  const statusIdx = headers.findIndex((h, idx) => 
+    idx !== urlIdx && idx !== companyIdx && idx !== roleIdx && idx !== dateIdx && (
+      h === 'status' || h === 'state' || h.includes('status')
+    )
+  );
 
-  // Fallback: scan first data row for URLs
+  // Fallback: scan first data row for URLs if no header matched
   if (urlIdx === -1 && rows.length > 1) {
     const firstDataRow = rows[1];
     for (let col = 0; col < (firstDataRow || []).length; col++) {
@@ -371,22 +448,40 @@ export function parseRowsToJobs(rows: string[][], existingJobs?: Job[]): Job[] {
     // Detect status from spreadsheet data
     let status: Job['status'] = 'not_applied';
     if (statusIdx !== -1) {
-      const statusVal = (row[statusIdx] || '').trim().toLowerCase().replace(/\s+/g, '_');
-      if (statusVal === 'applied') status = 'applied';
-      else if (statusVal === 'skipped') status = 'skipped';
+      const statusVal = (row[statusIdx] || '').trim().toLowerCase().replace(/[\s_-]+/g, '_');
+      if (statusVal === 'applied' || statusVal === 'done' || statusVal === 'submitted' || statusVal === 'yes') {
+        status = 'applied';
+      } else if (statusVal === 'skipped' || statusVal === 'rejected' || statusVal === 'ignore' || statusVal === 'no') {
+        status = 'skipped';
+      } else {
+        status = 'not_applied';
+      }
     }
 
     // Merge with existing job status if available
+    let existingJob: Job | undefined;
     if (existingJobs) {
-      const existingJob = existingJobs.find(j => compareUrls(j.url, url));
+      existingJob = existingJobs.find(j => compareUrls(j.url, url));
       if (existingJob) {
         status = existingJob.status;
       }
     }
 
     const id = getJobId(url, i);
+    const now = Date.now();
 
-    parsedJobs.push({ id, company, role, url, dateAdded, status });
+    parsedJobs.push({ 
+      id, 
+      company, 
+      role, 
+      url, 
+      dateAdded, 
+      status,
+      rowIndex: i,
+      createdAt: existingJob?.createdAt || (now - (rows.length - i) * 10),
+      updatedAt: existingJob?.updatedAt || now,
+      appliedAt: status === 'applied' ? (existingJob?.appliedAt || now) : undefined
+    });
   }
 
   return parsedJobs;

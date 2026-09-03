@@ -2,33 +2,48 @@ import { Snippet, Profile } from '../types';
 
 /**
  * Compiles manual shortcuts, dynamic experience shortcuts, and active profile fields,
- * and broadcasts them to all open tabs.
+ * and broadcasts them to all open tabs and storage.
  */
 export const syncShortcutsToStorage = (
-  snippets: Snippet[], 
+  snippets: Snippet[] = [], 
   dynamicShortcuts: Record<string, string> = {},
   activeProfile: Profile | null = null,
-  profileTriggers: Record<string, string> = {}
-) => {
+  profileTriggers: Record<string, string> = {},
+  profiles: Profile[] = [],
+  tailoredCoverLetter: string = ''
+): Record<string, string> => {
   const shortcuts: Record<string, string> = {};
 
   try {
     // 1. Compile manual snippets
-    snippets.forEach(s => {
-      if (s.shortcut) {
-        shortcuts[s.shortcut.toLowerCase()] = s.text;
-      }
-    });
+    if (Array.isArray(snippets)) {
+      snippets.forEach(s => {
+        if (s && s.shortcut) {
+          shortcuts[s.shortcut.trim().toLowerCase()] = s.text;
+        }
+      });
+    }
 
     // 2. Merge dynamic shortcuts
-    Object.keys(dynamicShortcuts).forEach(key => {
-      shortcuts[key.toLowerCase()] = dynamicShortcuts[key];
-    });
+    if (dynamicShortcuts && typeof dynamicShortcuts === 'object') {
+      Object.keys(dynamicShortcuts).forEach(key => {
+        if (dynamicShortcuts[key]) {
+          shortcuts[key.trim().toLowerCase()] = dynamicShortcuts[key];
+        }
+      });
+    }
+
+    // 2.5. Register tailored cover letter shortcuts if present
+    if (tailoredCoverLetter && tailoredCoverLetter.trim()) {
+      const cleanCover = tailoredCoverLetter.trim();
+      shortcuts['cover;'] = cleanCover;
+      shortcuts['cl;'] = cleanCover;
+    }
 
     // 3. Auto-map active profile fields
     if (activeProfile) {
-      // Find the first letter of their first name (or fall back to 'p' if empty)
-      const firstName = (activeProfile.first_name || activeProfile.full_name || activeProfile.name || '').trim().split(/\s+/)[0];
+      const fullName = (activeProfile.full_name || activeProfile.name || '').trim();
+      const firstName = (activeProfile.first_name || fullName).trim().split(/\s+/)[0];
       const p = (firstName ? firstName[0] : 'p').toLowerCase();
 
       // A. Dynamic First-Letter Templates
@@ -53,12 +68,11 @@ export const syncShortcutsToStorage = (
         if (exp.title?.trim()) shortcuts[`rl${num}`] = exp.title.trim();
         if (exp.company?.trim()) shortcuts[`cp${num}`] = exp.company.trim();
         if (exp.description?.trim()) {
-          // Format bullet points cleanly (ensure lines start with standard dash)
           const cleanDesc = exp.description
             .split('\n')
             .map(line => line.trim())
             .filter(line => line.length > 0)
-            .map(line => line.replace(/^([-•*·]|\d+\.)\s*/, '')) // Strip existing bullets
+            .map(line => line.replace(/^([-•*▪]|\d+\.)\s*/, '')) // Strip existing bullets
             .map(line => `- ${line}`)
             .join('\n');
           
@@ -77,7 +91,19 @@ export const syncShortcutsToStorage = (
         if (edu.field_of_study?.trim()) shortcuts[`major${num}`] = edu.field_of_study.trim();
       });
 
-      // D. Fallback / Custom profileTriggers
+      // C2. Structural Certifications (cert1, cert2, certs;)
+      const certs = (activeProfile.certifications || [])
+        .map(c => typeof c === 'string' ? c.trim() : '')
+        .filter(Boolean);
+      certs.forEach((cert, idx) => {
+        const num = idx + 1;
+        shortcuts[`cert${num}`] = cert;
+      });
+      if (certs.length > 0) {
+        shortcuts['certs;'] = certs.map(c => `- ${c}`).join('\n');
+      }
+
+      // D. Custom profileTriggers
       const fieldMappings: { storeKey: string; profileKey: keyof Profile; defaultTrigger: string }[] = [
         { storeKey: 'full_name', profileKey: 'full_name', defaultTrigger: 'name;' },
         { storeKey: 'first_name', profileKey: 'first_name', defaultTrigger: 'fname;' },
@@ -97,7 +123,12 @@ export const syncShortcutsToStorage = (
       ];
 
       fieldMappings.forEach(({ storeKey, profileKey, defaultTrigger }) => {
-        const val = activeProfile[profileKey];
+        let val = activeProfile[profileKey];
+        if (!val) {
+          if (profileKey === 'first_name') val = firstName;
+          else if (profileKey === 'last_name') val = fullName.split(/\s+/).slice(1).join(' ');
+          else if (profileKey === 'full_name') val = fullName;
+        }
         if (typeof val === 'string' && val.trim()) {
           const trigger = (profileTriggers[storeKey] || defaultTrigger).trim().toLowerCase();
           if (trigger) {
@@ -107,12 +138,21 @@ export const syncShortcutsToStorage = (
       });
     }
 
-    // A. Persist to Storage - The content scripts will pick this up via storage.onChanged
+    // Persist to Chrome Local Storage and fallback to localStorage
     if (typeof chrome !== 'undefined' && chrome.storage?.local) {
-      chrome.storage.local.set({ 
+      const storageObj: any = { 
         clipstaff_shortcuts: shortcuts,
         clipstaff_active_profile: activeProfile
-      });
+      };
+      if (profiles && profiles.length > 0) {
+        storageObj.clipstaff_profiles_list = profiles;
+      }
+      chrome.storage.local.set(storageObj);
+    } else if (typeof localStorage !== 'undefined') {
+      localStorage.setItem('clipstaff_shortcuts', JSON.stringify(shortcuts));
+      if (activeProfile) {
+        localStorage.setItem('clipstaff_active_profile', JSON.stringify(activeProfile));
+      }
     }
   } catch (err) {
     console.error('ClipStaff: Sync Exception', err);

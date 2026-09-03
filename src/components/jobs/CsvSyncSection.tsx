@@ -11,7 +11,11 @@ import {
   Download,
   Upload,
   MoreHorizontal,
-  ChevronDown
+  ChevronDown,
+  Zap,
+  CheckCircle2,
+  AlertCircle,
+  Loader2
 } from 'lucide-react';
 
 interface CsvSyncSectionProps {
@@ -25,6 +29,7 @@ interface CsvSyncSectionProps {
   handleSyncJobs: () => void;
   handleImportCSVFile: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onExportCSV: () => void;
+  onExportJSON?: () => void;
   onOpenAddModal: (mode: 'manual' | 'capture') => void;
   onClearJobs: () => void;
 
@@ -64,6 +69,7 @@ export const CsvSyncSection = ({
   handleSyncJobs,
   handleImportCSVFile,
   onExportCSV,
+  onExportJSON,
   onOpenAddModal,
   onClearJobs,
   onExportMergeUniversal,
@@ -84,7 +90,40 @@ export const CsvSyncSection = ({
   isMergingSheet = false
 }: CsvSyncSectionProps) => {
   const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const [testingScript, setTestingScript] = useState(false);
+  const [scriptTestResult, setScriptTestResult] = useState<{ success: boolean; message: string; latency?: number } | null>(null);
   const moreMenuRef = useRef<HTMLDivElement>(null);
+
+  const handleTestScriptConnection = () => {
+    const targetUrl = googleWebAppUrl ? googleWebAppUrl.trim() : '';
+    if (!targetUrl) {
+      setScriptTestResult({ success: false, message: 'Please enter a Google Apps Script Web App URL first.' });
+      return;
+    }
+    setTestingScript(true);
+    setScriptTestResult(null);
+
+    chrome.runtime.sendMessage({
+      type: 'TEST_GOOGLE_SCRIPT_CONNECTION',
+      url: targetUrl
+    }, (res) => {
+      setTestingScript(false);
+      if (chrome.runtime.lastError) {
+        setScriptTestResult({ success: false, message: chrome.runtime.lastError.message || 'Runtime error' });
+      } else if (res && res.success) {
+        setScriptTestResult({ 
+          success: true, 
+          message: `Connected (${res.latency}ms) — Web App is operational & authorized.`,
+          latency: res.latency 
+        });
+      } else {
+        setScriptTestResult({ 
+          success: false, 
+          message: res?.error || 'Connection failed. Verify Web App is deployed with "Who has access: Anyone".' 
+        });
+      }
+    });
+  };
 
   // Close dropdown on click outside
   useEffect(() => {
@@ -187,14 +226,14 @@ export const CsvSyncSection = ({
                   {/* Hidden file inputs */}
                   <input
                     type="file"
-                    accept=".csv"
+                    accept=".csv,.json"
                     onChange={handleImportCSVFile}
                     className="hidden"
                     id="csv-file-input"
                   />
                   <input
                     type="file"
-                    accept=".xlsx"
+                    accept=".xlsx,.xls,.csv,.json,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv,application/json"
                     onChange={(e) => {
                       const file = e.target.files?.[0];
                       if (file) onImportUniversalVault(file);
@@ -217,7 +256,7 @@ export const CsvSyncSection = ({
                     id="merge-vault-picker"
                   />
 
-                  {/* Clean 3-button row */}
+                  {/* Clean 1-Line Action Bar */}
                   <div className="flex items-center justify-between w-full">
                     <div className="flex items-center gap-1.5">
                       <Button
@@ -240,7 +279,9 @@ export const CsvSyncSection = ({
                       >
                         Add
                       </Button>
-                    </div>                    {/* Actions on Right */}
+                    </div>
+
+                    {/* Actions on Right */}
                     <div className="flex items-center gap-1.5">
                       <Button
                         size="sm"
@@ -274,14 +315,14 @@ export const CsvSyncSection = ({
                               className="w-full flex items-center gap-2.5 px-3.5 py-2 text-[9px] font-semibold uppercase tracking-wider text-ash hover:text-white hover:bg-white/5 transition-colors"
                             >
                               <Upload className="w-3.5 h-3.5 text-mist" />
-                              Import CSV
+                              Import CSV / JSON
                             </button>
                             <button
                               onClick={() => { document.getElementById('universal-vault-input')?.click(); setShowMoreMenu(false); }}
-                              className="w-full flex items-center gap-2.5 px-3.5 py-2 text-[9px] font-semibold uppercase tracking-wider text-ash hover:text-white hover:bg-white/5 transition-colors"
+                              className="w-full flex items-center gap-2.5 px-3.5 py-2 text-[9px] font-semibold uppercase tracking-wider text-accent-light hover:text-white hover:bg-accent/10 transition-colors"
                             >
-                              <Upload className="w-3.5 h-3.5 text-accent-light" />
-                              Load Vault
+                              <Upload className="w-3.5 h-3.5 text-accent" />
+                              Load Vault (.xlsx / .csv)
                             </button>
                             
                             <div className="border-t border-white/5 my-1" />
@@ -293,6 +334,15 @@ export const CsvSyncSection = ({
                               <Download className="w-3.5 h-3.5 text-mist" />
                               Export Excel
                             </button>
+                            {onExportJSON && (
+                              <button
+                                onClick={() => { onExportJSON(); setShowMoreMenu(false); }}
+                                className="w-full flex items-center gap-2.5 px-3.5 py-2 text-[9px] font-semibold uppercase tracking-wider text-accent-light hover:text-accent hover:bg-accent/10 transition-colors"
+                              >
+                                <Download className="w-3.5 h-3.5 text-accent" />
+                                Export JSON
+                              </button>
+                            )}
                             <button
                               onClick={() => { onExportMergeUniversal(null); setShowMoreMenu(false); }}
                               className="w-full flex items-center gap-2.5 px-3.5 py-2 text-[9px] font-semibold uppercase tracking-wider text-ash hover:text-white hover:bg-white/5 transition-colors"
@@ -447,9 +497,40 @@ export const CsvSyncSection = ({
                   placeholder="https://script.google.com/macros/s/.../exec"
                   className="flex-1 px-4 py-2.5 bg-black border border-white/5 rounded-xl text-xs text-white placeholder:text-muted/20 focus:outline-none focus:border-accent/40"
                   value={googleWebAppUrl}
-                  onChange={(e) => setGoogleWebAppUrl?.(e.target.value)}
+                  onChange={(e) => {
+                    setGoogleWebAppUrl?.(e.target.value);
+                    setScriptTestResult(null);
+                  }}
                 />
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={handleTestScriptConnection}
+                  isLoading={testingScript}
+                  icon={testingScript ? <Loader2 className="w-3 h-3 animate-spin" /> : <Zap className="w-3 h-3 text-accent" />}
+                  className="text-[10px] shrink-0"
+                  title="Validate Apps Script connection and CORS"
+                >
+                  {testingScript ? 'Testing...' : 'Test'}
+                </Button>
               </div>
+
+              {scriptTestResult && (
+                <div className={`p-2.5 rounded-xl text-[9px] flex items-start gap-2 leading-relaxed border ${
+                  scriptTestResult.success 
+                    ? 'bg-pulse-green/10 text-emerald-400 border-emerald-500/20' 
+                    : 'bg-coral-red/10 text-rose-400 border-rose-500/20'
+                }`}>
+                  {scriptTestResult.success ? (
+                    <CheckCircle2 className="w-3.5 h-3.5 shrink-0 text-emerald-400 mt-0.5" />
+                  ) : (
+                    <AlertCircle className="w-3.5 h-3.5 shrink-0 text-rose-400 mt-0.5" />
+                  )}
+                  <div className="flex-1 font-medium">
+                    {scriptTestResult.message}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>

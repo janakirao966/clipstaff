@@ -7,15 +7,16 @@ interface ModalProps {
   title: string;
   children: React.ReactNode;
   footer?: React.ReactNode;
+  maxWidth?: string;
 }
 
-export const Modal = ({ isOpen, onClose, title, children, footer }: ModalProps) => {
+export const Modal = ({ isOpen, onClose, title, children, footer, maxWidth = 'max-w-sm' }: ModalProps) => {
   if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-300">
       <div 
-        className="w-full max-w-sm bg-[#0A0A0A] border border-white/10 rounded-2xl shadow-premium overflow-hidden animate-in zoom-in-95 duration-300"
+        className={`w-full ${maxWidth} bg-[#0A0A0A] border border-white/10 rounded-2xl shadow-premium overflow-hidden animate-in zoom-in-95 duration-300`}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
